@@ -263,8 +263,11 @@ public class AlertRule
 
     [Menu("Show Mod Count",
         "Draw how many modifiers this monster has on the minimap, as a bare number like \"12\". " +
-        "Counts modifiers only, not buffs — buffs come and go with auras and charges and would " +
-        "make the number flicker. Appearance is under Mod Count Display.")]
+        "Counts rolled rare-monster affixes only — the MonsterMod entries in " +
+        "ObjectMagicProperties.Mods — so the number matches what the monster's own tooltip shows. " +
+        "Buffs are excluded too: they come and go with auras and charges and would make it " +
+        "flicker. Turn on Debug Overlay to see the full list and which entries were counted. " +
+        "Appearance is under Mod Count Display.")]
     public ToggleNode ShowModCount { get; set; } = new ToggleNode(false);
 
     [Menu("Mod Count Minimum", "Draw no number below this many modifiers. 0 shows every match.")]

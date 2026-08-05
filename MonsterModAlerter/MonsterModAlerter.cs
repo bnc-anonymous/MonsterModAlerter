@@ -23,6 +23,12 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// </summary>
     private sealed record Match(Entity Entity, AlertRule Rule, string MatchedName, int ModCount);
 
+    /// <summary>
+    /// Prefix ObjectMagicProperties.Mods uses for a rolled rare-monster affix, e.g.
+    /// MonsterModEnrage. Only these are counted — see FindMatch.
+    /// </summary>
+    private const string RareModPrefix = "MonsterMod";
+
     // Scan() builds a fresh list and swaps it in; Render() reads the reference once. The swap is
     // atomic, so the two never touch the same list even if Tick runs off the render thread.
     private volatile List<Match> _matches = new();
@@ -168,10 +174,14 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 if (string.IsNullOrEmpty(mod))
                     continue;
 
-                modCount++;
+                // Only the rare-monster modifiers proper. The list also carries entries that are
+                // not rolled affixes at all, and counting those inflates the number past what the
+                // monster's own tooltip shows.
+                if (mod.StartsWith(RareModPrefix, StringComparison.OrdinalIgnoreCase))
+                    modCount++;
 
-                // Match Mods only governs what terms are tested against, never the count — the
-                // count is about how loaded a monster is, not about which mods you searched for.
+                // Match Mods only governs what terms are tested against, never the count — searching
+                // stays over every entry, since a term may well name one of the others.
                 if (checkMods)
                     values.Add(mod);
             }
@@ -323,6 +333,44 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                   $"worldSize={match.Rule.WorldIconSize.Value} showMap={match.Rule.ShowOnMinimap.Value} " +
                   $"mapPos=({point.X:0},{point.Y:0}) inRegion={inRegion}",
                 inRegion && minimapVisible && match.Rule.ShowOnMinimap ? Color.LightGreen : Color.Orange);
+
+            // Only for a rule that is actually counting, and only the first such monster: printing
+            // every mod on every match would bury the rest of the overlay.
+            if (match.Rule.ShowModCount && ReferenceEquals(match, FirstCounting(matches)))
+                WriteModBreakdown(match, Write);
+        }
+    }
+
+    private static Match FirstCounting(List<Match> matches)
+    {
+        foreach (var match in matches)
+            if (match.Rule.ShowModCount)
+                return match;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Lists the monster's raw mod entries, marking which ones the count includes. This is how a
+    /// number that disagrees with the monster's tooltip gets diagnosed rather than guessed at.
+    /// </summary>
+    private static void WriteModBreakdown(Match match, Action<string, Color> write)
+    {
+        if (!match.Entity.TryGetComponent<ObjectMagicProperties>(out var props) || props?.Mods is not { } mods)
+        {
+            write("    no ObjectMagicProperties.Mods on this monster", Color.Orange);
+            return;
+        }
+
+        write($"    counted {match.ModCount} of {mods.Count} entries (prefix '{RareModPrefix}')", Color.White);
+
+        foreach (var mod in mods)
+        {
+            if (string.IsNullOrEmpty(mod))
+                continue;
+
+            var counted = mod.StartsWith(RareModPrefix, StringComparison.OrdinalIgnoreCase);
+            write($"      {(counted ? "+" : " ")} {mod}", counted ? Color.LightGreen : Color.Gray);
         }
     }
 
