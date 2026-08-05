@@ -16,16 +16,16 @@ namespace MonsterModAlerter;
 
 public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 {
-    /// <summary>A monster matching a rule, plus the mod/buff text that triggered it.</summary>
-    private sealed record Match(Entity Entity, AlertRule Rule, string MatchedName);
-
-    /// <summary>A monster whose modifier count is being displayed, and the colour to draw it in.</summary>
-    private sealed record ModCount(Entity Entity, int Count, Color Tint);
+    /// <summary>
+    /// A monster matching a rule, plus the mod/buff text that triggered it and how many modifiers
+    /// it carries. The count is read during the scan alongside the mods it is counting, so Render
+    /// never touches a component.
+    /// </summary>
+    private sealed record Match(Entity Entity, AlertRule Rule, string MatchedName, int ModCount);
 
     // Scan() builds a fresh list and swaps it in; Render() reads the reference once. The swap is
     // atomic, so the two never touch the same list even if Tick runs off the render thread.
     private volatile List<Match> _matches = new();
-    private volatile List<ModCount> _counts = new();
     private readonly HashSet<uint> _alertedEntityIds = new();
 
     private readonly Stopwatch _scanTimer = Stopwatch.StartNew();
@@ -47,11 +47,6 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         if (Settings.Rules.Content.Count == 0)
             Settings.Rules.Content.Add(AlertRule.Default());
 
-        // Seeded blank, which means "every rare and unique monster" — the setting is off by
-        // default, so ticking it on gives something immediately rather than an empty list.
-        if (Settings.ModCount.Rules.Content.Count == 0)
-            Settings.ModCount.Rules.Content.Add(ModCountRule.Default());
-
         Settings.ForceRefresh.OnPressed = ForceRefresh;
 
         return true;
@@ -60,7 +55,6 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     public override void AreaChange(AreaInstance area)
     {
         _matches = new List<Match>();
-        _counts = new List<ModCount>();
         _alertedEntityIds.Clear();
     }
 
@@ -73,7 +67,6 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     {
         _alertedEntityIds.Clear();
         _matches = new List<Match>();
-        _counts = new List<ModCount>();
         _scanTimer.Restart();
 
         // _soundTimer is deliberately left alone: restarting it would force a full cooldown wait,
@@ -114,21 +107,13 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                         (!string.IsNullOrWhiteSpace(r.SearchTerm?.Value) || r.Metadata?.IsBlank == false))
             .ToArray() ?? [];
 
-        // A rule with a blank metadata filter is valid — it covers a whole rarity — so unlike the
-        // alert rules these are not filtered on having text.
-        var countRules = Settings.ModCount.Enable
-            ? Settings.ModCount.Rules?.Content?.Where(r => r is { Enabled.Value: true }).ToArray() ?? []
-            : [];
-
-        if (rules.Length == 0 && countRules.Length == 0)
+        if (rules.Length == 0)
         {
             _matches = new List<Match>();
-            _counts = new List<ModCount>();
             return;
         }
 
         var found = new List<Match>();
-        var counted = new List<ModCount>();
 
         // Reused across entities within this scan; local so a Refresh Now from the UI thread
         // cannot collide with a scan in progress.
@@ -146,17 +131,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             if (maxDistance > 0 && entity.DistancePlayer > maxDistance)
                 continue;
 
-            // Counted before the global rarity gate below, and with its own rarity filter. Sharing
-            // that gate would mean showing counts on white monsters silently widened the alerts too.
-            if (countRules.Length > 0)
-            {
-                var count = CountMods(entity, countRules);
-                if (count != null)
-                    counted.Add(count);
-            }
-
             // Global filter — the cheap gate that applies to every alert rule.
-            if (rules.Length == 0 || !Settings.Rarity.Allows(entity.Rarity))
+            if (!Settings.Rarity.Allows(entity.Rarity))
                 continue;
 
             var match = FindMatch(entity, rules, checkMods, checkBuffs, values);
@@ -167,40 +143,6 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         // Ascending priority so the highest-priority icon is drawn last, i.e. on top.
         found.Sort((a, b) => a.Rule.Priority.Value.CompareTo(b.Rule.Priority.Value));
         _matches = found;
-        _counts = counted;
-    }
-
-    /// <summary>
-    /// How many modifiers this monster carries, or null when no count rule covers it. Counts
-    /// <see cref="ObjectMagicProperties.Mods"/> only — buffs are temporary and would make the
-    /// number jump around as auras and charges come and go.
-    /// </summary>
-    private static ModCount CountMods(Entity entity, ModCountRule[] rules)
-    {
-        ModCountRule best = null;
-        var path = entity.Path;
-
-        foreach (var rule in rules)
-        {
-            if (best != null && rule.Priority.Value <= best.Priority.Value)
-                continue;
-
-            if (rule.Matches(path, entity.Rarity))
-                best = rule;
-        }
-
-        if (best == null)
-            return null;
-
-        if (!entity.TryGetComponent<ObjectMagicProperties>(out var props) || props?.Mods is not { } mods)
-            return null;
-
-        var count = 0;
-        foreach (var mod in mods)
-            if (!string.IsNullOrEmpty(mod))
-                count++;
-
-        return count < best.MinCount.Value ? null : new ModCount(entity, count, best.Tint.Value);
     }
 
     /// <summary>
@@ -214,11 +156,25 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         // cheaper than re-reading components per rule, and it lets terms match across both sources.
         values.Clear();
 
-        if (checkMods && entity.TryGetComponent<ObjectMagicProperties>(out var magicProps) && magicProps?.Mods is { } mods)
+        // Counted here rather than in a second pass, so the number comes from the same read as the
+        // matching. Modifiers only: buffs come and go with auras and charges, and folding them in
+        // would make the number flicker as you moved.
+        var modCount = 0;
+
+        if (entity.TryGetComponent<ObjectMagicProperties>(out var magicProps) && magicProps?.Mods is { } mods)
         {
             foreach (var mod in mods)
-                if (!string.IsNullOrEmpty(mod))
+            {
+                if (string.IsNullOrEmpty(mod))
+                    continue;
+
+                modCount++;
+
+                // Match Mods only governs what terms are tested against, never the count — the
+                // count is about how loaded a monster is, not about which mods you searched for.
+                if (checkMods)
                     values.Add(mod);
+            }
         }
 
         if (checkBuffs && entity.TryGetComponent<Buffs>(out var buffs) && buffs?.BuffsList is { } buffList)
@@ -255,7 +211,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 if (rule.Metadata?.IsBlank != false)
                     continue;
 
-                best = new Match(entity, rule, rule.Metadata.Describe());
+                best = new Match(entity, rule, rule.Metadata.Describe(), modCount);
                 continue;
             }
 
@@ -275,7 +231,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             }
 
             if (allPresent)
-                best = new Match(entity, rule, display);
+                best = new Match(entity, rule, display, modCount);
         }
 
         return best;
@@ -296,9 +252,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     public override void Render()
     {
         var matches = _matches;
-        var counts = _counts;
 
-        if (!Settings.Enable || !GameController.InGame || (matches.Count == 0 && counts.Count == 0))
+        if (!Settings.Enable || !GameController.InGame || matches.Count == 0)
             return;
 
         var ingameUi = GameController.IngameState.IngameUi;
@@ -330,9 +285,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 DrawInWorld(match, region);
         }
 
-        // Drawn after the icons so a number is never buried under one.
-        if (counts.Count > 0)
-            DrawModCounts(counts, region, minimapVisible);
+        // A second pass, after every icon, so a number is never buried under one.
+        DrawModCounts(matches, region, minimapVisible);
 
         if (Settings.DebugOverlay)
             DrawDebugOverlay(matches, region, ingameUi, minimapVisible);
@@ -409,7 +363,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// Draws each monster's modifier count as a bare number, e.g. "12". Centred on the monster so
     /// it reads as belonging to that dot rather than to a neighbouring one.
     /// </summary>
-    private void DrawModCounts(List<ModCount> counts, RectangleF region, bool minimapVisible)
+    private void DrawModCounts(List<Match> matches, RectangleF region, bool minimapVisible)
     {
         var settings = Settings.ModCount;
         var alsoWorld = settings.DrawInWorld;
@@ -417,26 +371,46 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         if (!minimapVisible && !alsoWorld)
             return;
 
+        var any = false;
+        foreach (var match in matches)
+        {
+            if (match.Rule.ShowModCount)
+            {
+                any = true;
+                break;
+            }
+        }
+
+        // Nothing to draw is the common case, so the text-scale scope is not even entered.
+        if (!any)
+            return;
+
         using (Graphics.SetTextScale(settings.TextScale.Value))
         {
-            foreach (var count in counts)
+            foreach (var match in matches)
             {
-                if (!count.Entity.IsValid || !count.Entity.IsAlive)
+                var rule = match.Rule;
+
+                if (!rule.ShowModCount || match.ModCount < rule.ModCountMinimum.Value)
                     continue;
 
-                var text = count.Count.ToString();
-                var size = Graphics.MeasureText(text);
+                if (!match.Entity.IsValid || !match.Entity.IsAlive)
+                    continue;
 
-                if (minimapVisible)
+                var text = match.ModCount.ToString();
+                var size = Graphics.MeasureText(text);
+                var tint = rule.ModCountColor.Value;
+
+                if (minimapVisible && rule.ShowOnMinimap)
                 {
-                    var grid = count.Entity.GridPosNum;
-                    DrawNumber(text, size, Graphics.GridToMap(grid, grid), region, count.Tint, settings);
+                    var grid = match.Entity.GridPosNum;
+                    DrawNumber(text, size, Graphics.GridToMap(grid, grid), region, tint, settings);
                 }
 
-                if (alsoWorld)
+                if (alsoWorld && Settings.World.Enable && rule.ShowInWorld)
                 {
-                    var screen = GameController.IngameState.Camera.WorldToScreen(count.Entity.PosNum);
-                    DrawNumber(text, size, screen, region, count.Tint, settings);
+                    var screen = GameController.IngameState.Camera.WorldToScreen(match.Entity.PosNum);
+                    DrawNumber(text, size, screen, region, tint, settings);
                 }
             }
         }

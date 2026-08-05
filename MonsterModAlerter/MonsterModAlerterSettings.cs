@@ -66,7 +66,8 @@ public class MonsterModAlerterSettings : ISettings
         "Read once when the HUD loads the plugin, so changing it needs a HUD restart.")]
     public RangeNode<int> RenderOrder { get; set; } = new RangeNode<int>(5000, -1000, 100000);
 
-    [Menu("Mod Count", "Draws how many modifiers a monster has on the minimap, as a bare number.")]
+    [Menu("Mod Count Display",
+        "Appearance of the modifier-count numbers. Turn them on per rule, under Alert Rules.")]
     public ModCountSettings ModCount { get; set; } = new ModCountSettings();
 
     [Menu("World Overlay")]
@@ -150,10 +151,6 @@ public class MonsterModAlerterSettings : ISettings
 
         Rules.Content.Clear();
         Rules.Content.Add(AlertRule.Default());
-
-        // CopyValues skips ContentNode, so nested rule lists have to be cleared by hand.
-        ModCount.Rules.Content.Clear();
-        ModCount.Rules.Content.Add(ModCountRule.Default());
     }
 
     private static void CopyValues(object from, object to)
@@ -263,6 +260,18 @@ public class AlertRule
 
     [Menu("Show In World")]
     public ToggleNode ShowInWorld { get; set; } = new ToggleNode(true);
+
+    [Menu("Show Mod Count",
+        "Draw how many modifiers this monster has on the minimap, as a bare number like \"12\". " +
+        "Counts modifiers only, not buffs — buffs come and go with auras and charges and would " +
+        "make the number flicker. Appearance is under Mod Count Display.")]
+    public ToggleNode ShowModCount { get; set; } = new ToggleNode(false);
+
+    [Menu("Mod Count Minimum", "Draw no number below this many modifiers. 0 shows every match.")]
+    public RangeNode<int> ModCountMinimum { get; set; } = new RangeNode<int>(0, 0, 50);
+
+    [Menu("Mod Count Colour")]
+    public ColorNode ModCountColor { get; set; } = new ColorNode(Color.White);
 
     [Menu("Play Sound")]
     public ToggleNode PlaySound { get; set; } = new ToggleNode(true);
@@ -482,70 +491,13 @@ public class MetadataFilterSettings
 }
 
 /// <summary>
-/// One "count the mods on this kind of monster" rule.
-///
-/// A blank metadata filter means "any monster", so the rarity boxes alone decide — that is how a
-/// whole rarity gets covered without naming anything.
-/// </summary>
-[Submenu(CollapsedByDefault = true)]
-public class ModCountRule
-{
-    public static ModCountRule Default() => new ModCountRule
-    {
-        Rarity = RarityFilterSettings.RareAndUnique(),
-    };
-
-    [Menu("Enabled")]
-    public ToggleNode Enabled { get; set; } = new ToggleNode(true);
-
-    [Menu("Monster Filter")]
-    public MetadataFilterSettings Metadata { get; set; } = new MetadataFilterSettings();
-
-    [Menu("Rarity Filter", "Which rarities this rule counts. Independent of the global alert filter.")]
-    public RarityFilterSettings Rarity { get; set; } = RarityFilterSettings.RareAndUnique();
-
-    [Menu("Minimum Count", "Draw nothing below this many modifiers. 1 hides unmodified monsters.")]
-    public RangeNode<int> MinCount { get; set; } = new RangeNode<int>(1, 0, 50);
-
-    [Menu("Colour")]
-    public ColorNode Tint { get; set; } = new ColorNode(Color.White);
-
-    [Menu("Priority", "When two rules match one monster, the higher number wins.")]
-    public RangeNode<int> Priority { get; set; } = new RangeNode<int>(0, -100, 100);
-
-    /// <summary>True when this rule counts the given monster.</summary>
-    public bool Matches(string path, MonsterRarity rarity) =>
-        Enabled && Rarity.Allows(rarity) && Metadata.Matches(path);
-
-    public override string ToString() =>
-        $"{(Enabled ? "" : "(off) ")}{Metadata.Describe()}###{GetHashCode()}";
-}
-
-/// <summary>
-/// Shows a monster's modifier count on the minimap as a bare number, e.g. "12". Separate from the
-/// alert rules: those need a search term and answer "is this specific mod here", while this answers
-/// "how loaded is this monster" without caring which mods they are.
+/// How the modifier count is drawn. Which monsters get one is decided per alert rule, by its
+/// Show Mod Count tick — so a count is always tied to a rule you already wrote, rather than being a
+/// second list of monsters to keep in step with the first.
 /// </summary>
 [Submenu(CollapsedByDefault = true)]
 public class ModCountSettings
 {
-    [Menu("Show Mod Count On Minimap")]
-    public ToggleNode Enable { get; set; } = new ToggleNode(false);
-
-    [Menu("Count Rules",
-        "Which monsters get a number. Leave a rule's metadata filter blank to cover a whole rarity.")]
-    public ContentNode<ModCountRule> Rules { get; set; } = new ContentNode<ModCountRule>
-    {
-        EnableControls = true,
-        EnableItemCollapsing = true,
-        ItemFactory = () => ModCountRule.Default(),
-        ItemFilter = (rule, search) =>
-            (rule.Metadata.Filter.Value ?? "").Contains(search, StringComparison.OrdinalIgnoreCase),
-        // Empty for the same reason as the alert rules: ExileCore deserializes without
-        // ObjectCreationHandling.Replace, so a seeded list would grow on every load.
-        Content = new List<ModCountRule>(),
-    };
-
     [Menu("Text Size")]
     public RangeNode<float> TextScale { get; set; } = new RangeNode<float>(1.0f, 0.5f, 3.0f);
 
