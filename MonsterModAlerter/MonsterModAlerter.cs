@@ -562,8 +562,19 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         }
     }
 
+    /// <summary>
+    /// <paramref name="opacity"/> fades the whole number — digits, outline and box together. Fading
+    /// only the digits would leave a remembered count sitting inside a solid black outline, which
+    /// reads as more prominent than the live ones it is supposed to sit behind.
+    /// </summary>
     private void DrawNumber(
-        string text, Vector2 size, Vector2 at, RectangleF region, Color tint, ModCountSettings settings)
+        string text,
+        Vector2 size,
+        Vector2 at,
+        RectangleF region,
+        Color tint,
+        ModCountSettings settings,
+        float opacity = 1f)
     {
         if (!region.Contains(at.X, at.Y))
             return;
@@ -574,7 +585,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         {
             Graphics.DrawBox(
                 new RectangleF(pos.X - 2f, pos.Y - 1f, size.X + 4f, size.Y + 2f),
-                settings.BackgroundColor.Value);
+                Fade(settings.BackgroundColor.Value, opacity));
         }
 
         // Eight offset copies underneath, which reads over any terrain without covering the map
@@ -582,7 +593,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         // stay bare and the number still disappears against a busy background.
         if (settings.DrawOutline)
         {
-            var outline = settings.OutlineColor.Value;
+            var outline = Fade(settings.OutlineColor.Value, opacity);
 
             for (var dx = -1; dx <= 1; dx++)
             for (var dy = -1; dy <= 1; dy++)
@@ -592,8 +603,11 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             }
         }
 
-        Graphics.DrawText(text, pos, tint);
+        Graphics.DrawText(text, pos, Fade(tint, opacity));
     }
+
+    private static Color Fade(Color color, float opacity) =>
+        opacity >= 1f ? color : new Color(color.R, color.G, color.B, (byte)(color.A * opacity));
 
     private void DrawInWorld(Match match, RectangleF region)
     {
@@ -672,24 +686,21 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             if (!region.Contains(point.X, point.Y))
                 continue;
 
-            var tint = rule.Tint.Value;
-            DrawIcon(point, rule.IconSize.Value, rule,
-                new Color(tint.R, tint.G, tint.B, (byte)(tint.A * fade)));
+            DrawIcon(point, rule.IconSize.Value, rule, Fade(rule.Tint.Value, fade));
 
             if (!rule.ShowModCount || entry.ModCount < rule.ModCountMinimum.Value)
                 continue;
 
             // The count is the whole point of remembering these — it is what the kill order is
-            // decided on — so it is faded alongside rather than dropped.
+            // decided on — so it is faded alongside rather than dropped. Rare affixes are fixed at
+            // spawn, so the remembered number stays accurate however long ago it was read.
             using (Graphics.SetTextScale(countSettings.TextScale.Value))
             {
                 var text = entry.ModCount.ToString();
                 var size = Graphics.MeasureText(text);
-                var number = rule.ModCountColor.Value;
 
                 DrawNumber(text, size, point + countSettings.OffsetFor(rule.IconSize.Value, size),
-                    region, new Color(number.R, number.G, number.B, (byte)(number.A * fade)),
-                    countSettings);
+                    region, rule.ModCountColor.Value, countSettings, fade);
             }
         }
     }
