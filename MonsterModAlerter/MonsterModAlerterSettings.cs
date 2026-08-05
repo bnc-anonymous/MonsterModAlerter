@@ -79,6 +79,14 @@ public class MonsterModAlerterSettings : ISettings
     [Menu("Draw Only On Large Map", "Restrict minimap icons to the open map (Tab) only.")]
     public ToggleNode DrawOnlyOnLargeMap { get; set; } = new ToggleNode(false);
 
+    [Menu("Forget Radius",
+        "For rules with Remember Position on: how close you must get to a remembered spot, in grid " +
+        "units, before an icon with no monster there is removed. A monster killed while you walk " +
+        "away leaves the entity list without ever being seen dead, so this is what clears it. " +
+        "Keep it comfortably inside the range at which monsters load, or a live monster sitting " +
+        "just beyond that range will be forgotten while it is still alive.")]
+    public RangeNode<int> ForgetRadius { get; set; } = new RangeNode<int>(60, 10, 300);
+
 
     [Menu("Ignore Fullscreen Panels", "Keep drawing while a fullscreen panel (Atlas, etc.) is open.")]
     public ToggleNode IgnoreFullscreenPanels { get; set; } = new ToggleNode(false);

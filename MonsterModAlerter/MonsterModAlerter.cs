@@ -153,10 +153,17 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         var checkMods = Settings.CheckMods;
         var checkBuffs = Settings.CheckBuffs;
 
+        // Every monster the game currently has loaded, whatever its state. Absence from this, at a
+        // spot we are standing next to, is what proves a remembered monster is gone — see
+        // ForgetVanished.
+        var present = _remembered.Count > 0 ? new HashSet<uint>() : null;
+
         foreach (var entity in GameController.EntityListWrapper.ValidEntitiesByType[EntityType.Monster])
         {
             if (entity == null || !entity.IsHostile)
                 continue;
+
+            present?.Add(entity.Id);
 
             // Checked before the range gate, not after: a monster killed while remembered has to
             // have its icon retired, and this is the only moment we can know that it died.
@@ -191,10 +198,54 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             }
         }
 
+        if (present != null)
+            ForgetVanished(present);
+
         // Ascending priority so the highest-priority icon is drawn last, i.e. on top.
         found.Sort((a, b) => a.Rule.Priority.Value.CompareTo(b.Rule.Priority.Value));
         _matches = found;
         _outOfRange = BuildOutOfRange(found);
+    }
+
+    /// <summary>
+    /// Drops remembered icons for monsters that are no longer there.
+    ///
+    /// Seeing a monster die is not enough on its own: kill one and walk away, and it leaves the
+    /// entity list without ever being observed dead, so its icon would sit on the map for the rest
+    /// of the zone. Absence from the entity list is only evidence of that when we are close enough
+    /// that the game would have loaded it — further out, absence just means out of range.
+    /// </summary>
+    private void ForgetVanished(HashSet<uint> present)
+    {
+        var player = GameController?.Player;
+        if (player == null)
+            return;
+
+        var here = player.GridPosNum;
+        var radius = Settings.ForgetRadius.Value;
+        var radiusSquared = (float)radius * radius;
+
+        List<uint> gone = null;
+
+        foreach (var entry in _remembered.Values)
+        {
+            if (present.Contains(entry.Id))
+                continue;
+
+            // Squared distance: this runs over every remembered monster on every scan, and the
+            // square root would buy nothing a squared threshold does not.
+            var dx = entry.GridPos.X - here.X;
+            var dy = entry.GridPos.Y - here.Y;
+
+            if (dx * dx + dy * dy <= radiusSquared)
+                (gone ??= []).Add(entry.Id);
+        }
+
+        if (gone == null)
+            return;
+
+        foreach (var id in gone)
+            _remembered.Remove(id);
     }
 
     /// <summary>
@@ -405,6 +456,26 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         Write($"[{Name}] matches={matches.Count}  rules={Settings.Rules.Content.Count}  " +
               $"remembered={_remembered.Count} (drawn stale={_outOfRange.Count})", Color.White);
+
+        // The nearest remembered monster and whether it is inside the forget radius: if an icon is
+        // lingering, this says whether we are simply not close enough yet to disprove it.
+        if (_outOfRange.Count > 0 && GameController?.Player != null)
+        {
+            var here = GameController.Player.GridPosNum;
+            var nearest = float.MaxValue;
+
+            foreach (var entry in _outOfRange)
+            {
+                var dx = entry.GridPos.X - here.X;
+                var dy = entry.GridPos.Y - here.Y;
+                nearest = Math.Min(nearest, (float)Math.Sqrt(dx * dx + dy * dy));
+            }
+
+            var radius = Settings.ForgetRadius.Value;
+            Write($"  nearest stale icon {nearest:0} grid away, forget radius {radius} — " +
+                  (nearest <= radius ? "inside, so it would have been dropped" : "walk closer to clear it"),
+                nearest <= radius ? Color.Orange : Color.White);
+        }
         Write($"smallMap={ingameUi.Map.SmallMiniMap.IsVisibleLocal}  largeMap={ingameUi.Map.LargeMap.IsVisibleLocal}  " +
               $"minimapVisible={minimapVisible}  onlyLarge={Settings.DrawOnlyOnLargeMap.Value}",
             minimapVisible ? Color.LightGreen : Color.Orange);
