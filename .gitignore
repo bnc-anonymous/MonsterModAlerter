@@ -1,0 +1,7 @@
+# Build artifacts — the HUD compiles from source, these are regenerable
+bin/
+obj/
+
+# IDE
+.vs/
+*.user
