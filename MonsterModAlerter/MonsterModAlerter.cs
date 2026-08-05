@@ -29,9 +29,21 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// </summary>
     private const string RareModPrefix = "MonsterMod";
 
+    /// <summary>
+    /// Where a monster was when it was last in range, for rules with Remember Position on. Holds
+    /// the grid position rather than the Entity: the entity is gone from the list by the time this
+    /// is drawn, and reading a stale one is not safe.
+    /// </summary>
+    private sealed record Remembered(uint Id, Vector2 GridPos, AlertRule Rule, int ModCount);
+
     // Scan() builds a fresh list and swaps it in; Render() reads the reference once. The swap is
     // atomic, so the two never touch the same list even if Tick runs off the render thread.
     private volatile List<Match> _matches = new();
+    private volatile List<Remembered> _outOfRange = new();
+
+    // Owned by the scan thread alone; Render only ever sees the _outOfRange snapshot above.
+    private readonly Dictionary<uint, Remembered> _remembered = new();
+
     private readonly HashSet<uint> _alertedEntityIds = new();
 
     private readonly Stopwatch _scanTimer = Stopwatch.StartNew();
@@ -61,6 +73,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     public override void AreaChange(AreaInstance area)
     {
         _matches = new List<Match>();
+        _outOfRange = new List<Remembered>();
+        _remembered.Clear();
         _alertedEntityIds.Clear();
     }
 
@@ -73,6 +87,11 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     {
         _alertedEntityIds.Clear();
         _matches = new List<Match>();
+
+        // Remembered positions are dropped too: Refresh Now exists to re-derive everything from
+        // the current state, and keeping ghosts would defeat that.
+        _outOfRange = new List<Remembered>();
+        _remembered.Clear();
         _scanTimer.Restart();
 
         // _soundTimer is deliberately left alone: restarting it would force a full cooldown wait,
@@ -116,6 +135,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         if (rules.Length == 0)
         {
             _matches = new List<Match>();
+            _outOfRange = new List<Remembered>();
+            _remembered.Clear();
             return;
         }
 
@@ -134,8 +155,16 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         foreach (var entity in GameController.EntityListWrapper.ValidEntitiesByType[EntityType.Monster])
         {
-            if (entity == null || !entity.IsAlive || !entity.IsHostile)
+            if (entity == null || !entity.IsHostile)
                 continue;
+
+            // Checked before the range gate, not after: a monster killed while remembered has to
+            // have its icon retired, and this is the only moment we can know that it died.
+            if (!entity.IsAlive)
+            {
+                _remembered.Remove(entity.Id);
+                continue;
+            }
 
             if (maxDistance > 0 && entity.DistancePlayer > maxDistance)
                 continue;
@@ -145,13 +174,52 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 continue;
 
             var match = FindMatch(entity, rules, checkMods, checkBuffs, values, countedMods);
-            if (match != null)
-                found.Add(match);
+            if (match == null)
+                continue;
+
+            found.Add(match);
+
+            if (match.Rule.RememberPosition)
+            {
+                _remembered[entity.Id] =
+                    new Remembered(entity.Id, entity.GridPosNum, match.Rule, match.ModCount);
+            }
+            else
+            {
+                // The option was turned off, or a higher-priority rule without it now wins.
+                _remembered.Remove(entity.Id);
+            }
         }
 
         // Ascending priority so the highest-priority icon is drawn last, i.e. on top.
         found.Sort((a, b) => a.Rule.Priority.Value.CompareTo(b.Rule.Priority.Value));
         _matches = found;
+        _outOfRange = BuildOutOfRange(found);
+    }
+
+    /// <summary>
+    /// The remembered monsters that are not currently in range, so Render can draw them faded
+    /// without doubling up on the ones it is already drawing live.
+    /// </summary>
+    private List<Remembered> BuildOutOfRange(List<Match> live)
+    {
+        if (_remembered.Count == 0)
+            return new List<Remembered>();
+
+        var liveIds = new HashSet<uint>(live.Count);
+        foreach (var match in live)
+            liveIds.Add(match.Entity.Id);
+
+        var stale = new List<Remembered>(_remembered.Count);
+        foreach (var entry in _remembered.Values)
+        {
+            // Dropped rather than kept when its rule is switched off or deleted, so stale icons
+            // cannot outlive the rule that asked for them.
+            if (!liveIds.Contains(entry.Id) && entry.Rule.Enabled && entry.Rule.RememberPosition)
+                stale.Add(entry);
+        }
+
+        return stale;
     }
 
     /// <summary>
@@ -275,8 +343,9 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     public override void Render()
     {
         var matches = _matches;
+        var outOfRange = _outOfRange;
 
-        if (!Settings.Enable || !GameController.InGame || matches.Count == 0)
+        if (!Settings.Enable || !GameController.InGame || (matches.Count == 0 && outOfRange.Count == 0))
             return;
 
         var ingameUi = GameController.IngameState.IngameUi;
@@ -295,6 +364,10 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         var minimapVisible = Settings.DrawOnlyOnLargeMap
             ? largeMapVisible
             : largeMapVisible || ingameUi.Map.SmallMiniMap.IsVisibleLocal;
+
+        // Drawn first, so a live monster's icon always sits on top of a remembered one.
+        if (minimapVisible)
+            DrawRemembered(outOfRange, region);
 
         foreach (var match in matches)
         {
@@ -330,7 +403,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             y += line;
         }
 
-        Write($"[{Name}] matches={matches.Count}  rules={Settings.Rules.Content.Count}", Color.White);
+        Write($"[{Name}] matches={matches.Count}  rules={Settings.Rules.Content.Count}  " +
+              $"remembered={_remembered.Count} (drawn stale={_outOfRange.Count})", Color.White);
         Write($"smallMap={ingameUi.Map.SmallMiniMap.IsVisibleLocal}  largeMap={ingameUi.Map.LargeMap.IsVisibleLocal}  " +
               $"minimapVisible={minimapVisible}  onlyLarge={Settings.DrawOnlyOnLargeMap.Value}",
             minimapVisible ? Color.LightGreen : Color.Orange);
@@ -565,11 +639,59 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         }
     }
 
-    private void DrawIcon(Vector2 center, int size, AlertRule rule)
+    private void DrawIcon(Vector2 center, int size, AlertRule rule) =>
+        DrawIcon(center, size, rule, rule.Tint.Value);
+
+    private void DrawIcon(Vector2 center, int size, AlertRule rule, Color tint)
     {
         var half = size / 2f;
         var rect = new RectangleF(center.X - half, center.Y - half, size, size);
-        Graphics.DrawImage(IconAtlas.TextureName, rect, SpriteHelper.GetUV(rule.Icon), rule.Tint.Value);
+        Graphics.DrawImage(IconAtlas.TextureName, rect, SpriteHelper.GetUV(rule.Icon), tint);
+    }
+
+    /// <summary>
+    /// Last known positions of monsters that have dropped out of range, faded so they read as
+    /// "was here" rather than "is here". Drawn from a stored grid position, never from the entity:
+    /// by definition it is no longer in the entity list.
+    /// </summary>
+    private void DrawRemembered(List<Remembered> stale, RectangleF region)
+    {
+        if (stale.Count == 0)
+            return;
+
+        var fade = Settings.RememberedOpacity.Value;
+        var countSettings = Settings.ModCount;
+
+        foreach (var entry in stale)
+        {
+            var rule = entry.Rule;
+            if (!rule.ShowOnMinimap)
+                continue;
+
+            var point = Graphics.GridToMap(entry.GridPos, entry.GridPos);
+            if (!region.Contains(point.X, point.Y))
+                continue;
+
+            var tint = rule.Tint.Value;
+            DrawIcon(point, rule.IconSize.Value, rule,
+                new Color(tint.R, tint.G, tint.B, (byte)(tint.A * fade)));
+
+            if (!rule.ShowModCount || entry.ModCount < rule.ModCountMinimum.Value)
+                continue;
+
+            // The count is the whole point of remembering these — it is what the kill order is
+            // decided on — so it is faded alongside rather than dropped.
+            using (Graphics.SetTextScale(countSettings.TextScale.Value))
+            {
+                var text = entry.ModCount.ToString();
+                var size = Graphics.MeasureText(text);
+                var number = rule.ModCountColor.Value;
+
+                DrawNumber(text, size, point + countSettings.OffsetFor(rule.IconSize.Value, size),
+                    region, new Color(number.R, number.G, number.B, (byte)(number.A * fade)),
+                    countSettings);
+            }
+        }
     }
 
     /// <summary>
