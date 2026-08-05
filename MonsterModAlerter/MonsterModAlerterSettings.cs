@@ -504,12 +504,52 @@ public class ModCountSettings
     [Menu("Text Size")]
     public RangeNode<float> TextScale { get; set; } = new RangeNode<float>(1.0f, 0.5f, 3.0f);
 
-    [Menu("Background", "Drawn behind the number so it stays readable over map terrain.")]
-    public ToggleNode DrawBackground { get; set; } = new ToggleNode(true);
+    [Menu("Position",
+        "Where the number sits relative to the monster's icon. Anything but Centred keeps it clear " +
+        "of the icon, which is otherwise drawn in the same place and hides it.")]
+    public ListNode Placement { get; set; } = new ListNode
+    {
+        Values = ["Right of icon", "Left of icon", "Above icon", "Below icon", "Centred on icon"],
+        Value = "Right of icon",
+    };
+
+    [Menu("Gap", "Extra pixels between the icon's edge and the number.")]
+    public RangeNode<int> Gap { get; set; } = new RangeNode<int>(2, 0, 40);
+
+    [Menu("Outline",
+        "Draws the number with a dark outline instead of a filled box. Stays readable over any " +
+        "terrain without covering what is underneath.")]
+    public ToggleNode DrawOutline { get; set; } = new ToggleNode(true);
+
+    [Menu("Outline Colour")]
+    public ColorNode OutlineColor { get; set; } = new ColorNode(Color.Black);
+
+    [Menu("Background",
+        "Solid box behind the number. Off by default — the outline reads better and does not hide " +
+        "the map underneath.")]
+    public ToggleNode DrawBackground { get; set; } = new ToggleNode(false);
 
     [Menu("Background Colour")]
     public ColorNode BackgroundColor { get; set; } = new ColorNode(new Color(0, 0, 0, 200));
 
     [Menu("Also Draw In World", "Show the same number over the monster itself, not just on the map.")]
     public ToggleNode DrawInWorld { get; set; } = new ToggleNode(false);
+
+    /// <summary>
+    /// Offset from the monster's position that puts the number beside an icon of the given size,
+    /// rather than under it.
+    /// </summary>
+    public Vector2N OffsetFor(float iconSize, Vector2N textSize)
+    {
+        var pad = iconSize / 2f + Gap.Value;
+
+        return Placement.Value switch
+        {
+            "Left of icon" => new Vector2N(-pad - textSize.X / 2f, 0),
+            "Above icon" => new Vector2N(0, -pad - textSize.Y / 2f),
+            "Below icon" => new Vector2N(0, pad + textSize.Y / 2f),
+            "Centred on icon" => Vector2N.Zero,
+            _ => new Vector2N(pad + textSize.X / 2f, 0),
+        };
+    }
 }

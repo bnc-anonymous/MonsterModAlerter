@@ -452,13 +452,15 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 if (minimapVisible && rule.ShowOnMinimap)
                 {
                     var grid = match.Entity.GridPosNum;
-                    DrawNumber(text, size, Graphics.GridToMap(grid, grid), region, tint, settings);
+                    var at = Graphics.GridToMap(grid, grid) + settings.OffsetFor(rule.IconSize.Value, size);
+                    DrawNumber(text, size, at, region, tint, settings);
                 }
 
                 if (alsoWorld && Settings.World.Enable && rule.ShowInWorld)
                 {
                     var screen = GameController.IngameState.Camera.WorldToScreen(match.Entity.PosNum);
-                    DrawNumber(text, size, screen, region, tint, settings);
+                    DrawNumber(text, size, screen + settings.OffsetFor(rule.WorldIconSize.Value, size),
+                        region, tint, settings);
                 }
             }
         }
@@ -477,6 +479,21 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             Graphics.DrawBox(
                 new RectangleF(pos.X - 2f, pos.Y - 1f, size.X + 4f, size.Y + 2f),
                 settings.BackgroundColor.Value);
+        }
+
+        // Eight offset copies underneath, which reads over any terrain without covering the map
+        // the way a filled box does. Diagonals included: without them the corners of each glyph
+        // stay bare and the number still disappears against a busy background.
+        if (settings.DrawOutline)
+        {
+            var outline = settings.OutlineColor.Value;
+
+            for (var dx = -1; dx <= 1; dx++)
+            for (var dy = -1; dy <= 1; dy++)
+            {
+                if (dx != 0 || dy != 0)
+                    Graphics.DrawText(text, new Vector2(pos.X + dx, pos.Y + dy), outline);
+            }
         }
 
         Graphics.DrawText(text, pos, tint);
