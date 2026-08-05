@@ -505,12 +505,14 @@ public class ModCountSettings
     public RangeNode<float> TextScale { get; set; } = new RangeNode<float>(1.0f, 0.5f, 3.0f);
 
     [Menu("Position",
-        "Where the number sits relative to the monster's icon. Anything but Centred keeps it clear " +
-        "of the icon, which is otherwise drawn in the same place and hides it.")]
+        "Where the number sits relative to the monster's icon. Centred is the default and works " +
+        "because of the outline below — it leaves no doubt which icon a number belongs to when " +
+        "monsters are packed together. The offset positions are there for when the icon itself " +
+        "matters more than the number.")]
     public ListNode Placement { get; set; } = new ListNode
     {
-        Values = ["Right of icon", "Left of icon", "Above icon", "Below icon", "Centred on icon"],
-        Value = "Right of icon",
+        Values = ["Centred on icon", "Right of icon", "Left of icon", "Above icon", "Below icon"],
+        Value = "Centred on icon",
     };
 
     [Menu("Gap", "Extra pixels between the icon's edge and the number.")]
