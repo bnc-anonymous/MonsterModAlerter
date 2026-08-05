@@ -293,7 +293,7 @@ public class AlertRule
         "the monster is seen dead.")]
     public ToggleNode RememberPosition { get; set; } = new ToggleNode(false);
 
-    [Menu("Show Mod Count",
+    [Menu("Show Rare Modifier Count",
         "Draw how many modifiers this monster has on the minimap, as a bare number like \"12\". " +
         "Counts distinct rolled rare-monster affixes only — the MonsterMod entries in " +
         "ObjectMagicProperties.Mods, ignoring repeats, since the game lists some of them more " +
@@ -303,10 +303,18 @@ public class AlertRule
         "Appearance is under Mod Count Display.")]
     public ToggleNode ShowModCount { get; set; } = new ToggleNode(false);
 
-    [Menu("Mod Count Minimum", "Draw no number below this many modifiers. 0 shows every match.")]
+    [Menu("Count Search Term Matches Instead",
+        "Show how many of the monster's modifiers match this rule's search term, rather than how " +
+        "many rare affixes it has. With \"MonsterMod.*Touched\" and wildcards on, a monster with " +
+        "Fire Touched and Cold Touched reads 2 rather than its full affix count. Distinct entries " +
+        "only, and buffs count too if Match Buffs is on, since those are what the term was tested " +
+        "against. Ignored on a rule with no search term, which falls back to the rare count.")]
+    public ToggleNode CountSearchMatches { get; set; } = new ToggleNode(false);
+
+    [Menu("Count Minimum", "Draw no number below this. 0 shows every match.")]
     public RangeNode<int> ModCountMinimum { get; set; } = new RangeNode<int>(0, 0, 50);
 
-    [Menu("Mod Count Colour")]
+    [Menu("Count Colour")]
     public ColorNode ModCountColor { get; set; } = new ColorNode(Color.White);
 
     [Menu("Play Sound")]

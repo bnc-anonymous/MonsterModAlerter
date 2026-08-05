@@ -413,7 +413,13 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             }
 
             if (allPresent)
-                best = Keep(new Match(entity, rule, display, modCount));
+            {
+                var shown = rule.CountSearchMatches
+                    ? CountSearchMatches(values, rule, terms, patterns, countedMods)
+                    : modCount;
+
+                best = Keep(new Match(entity, rule, display, shown));
+            }
         }
 
         return best;
@@ -427,6 +433,56 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
             return best == null || match.Rule.Priority.Value > best.Rule.Priority.Value ? match : best;
         }
+    }
+
+    /// <summary>
+    /// How many of the monster's distinct mod and buff names this rule's terms match.
+    ///
+    /// Any term counts, not all of them: the terms are ANDed to decide whether the rule fires at
+    /// all, and by this point it has. Asking "how many match" then means how many entries any of
+    /// them picked out, which for the usual single-term rule is exactly the number of hits.
+    /// </summary>
+    private static int CountSearchMatches(
+        List<string> values, AlertRule rule, string[] terms, Regex[] patterns, HashSet<string> scratch)
+    {
+        // Safe to borrow: the rare-affix count that used this is already final by now. Cleared per
+        // call because several rules may each ask, and the game repeats entries in the mod list.
+        scratch.Clear();
+
+        var count = 0;
+
+        foreach (var value in values)
+        {
+            var hit = false;
+
+            if (rule.UseRegex)
+            {
+                foreach (var pattern in patterns)
+                {
+                    if (pattern.IsMatch(value))
+                    {
+                        hit = true;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                foreach (var term in terms)
+                {
+                    if (value.Contains(term, StringComparison.OrdinalIgnoreCase))
+                    {
+                        hit = true;
+                        break;
+                    }
+                }
+            }
+
+            if (hit && scratch.Add(value))
+                count++;
+        }
+
+        return count;
     }
 
     /// <summary>
@@ -665,14 +721,17 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         if (!any)
             return;
 
-        // One number per monster, however many of its rules ask for one: the count is a property
-        // of the monster, so drawing it twice in the same place only thickens the outline.
+        // One number per monster, however many of its rules ask for one — two would land on the
+        // same pixels. Walked backwards because the list is sorted by ascending priority, so this
+        // hands the number to the highest-priority rule, which matters once rules can be counting
+        // different things.
         var numbered = new HashSet<uint>();
 
         using (Graphics.SetTextScale(settings.TextScale.Value))
         {
-            foreach (var match in matches)
+            for (var i = matches.Count - 1; i >= 0; i--)
             {
+                var match = matches[i];
                 var rule = match.Rule;
 
                 if (!rule.ShowModCount || match.ModCount < rule.ModCountMinimum.Value)
