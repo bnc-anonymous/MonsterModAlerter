@@ -51,6 +51,13 @@ public class MonsterModAlerterSettings : ISettings
     [Menu("Match Buffs", "Check the Buffs component (e.g. torment_cutthroat). Some monsters expose the mod only as a buff.")]
     public ToggleNode CheckBuffs { get; set; } = new ToggleNode(true);
 
+    [Menu("Allow Multiple Matches",
+        "Show every rule that matches a monster, not just the highest-priority one. The icons are " +
+        "laid out in a row centred on the monster, since drawn at its exact position they would sit " +
+        "perfectly on top of each other and only the top one would be visible. Turn off to go back " +
+        "to one icon per monster, chosen by Priority.")]
+    public ToggleNode AllowMultipleMatches { get; set; } = new ToggleNode(true);
+
     [Menu("Global Rarity Filter",
         "Applies to every rule. A monster must pass BOTH this and the rule's own rarity filter, " +
         "so each rule can only narrow this further, never widen it.")]
