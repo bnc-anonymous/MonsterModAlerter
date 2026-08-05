@@ -10,6 +10,7 @@ using Newtonsoft.Json.Converters;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Color = SharpDX.Color;
 using Vector2N = System.Numerics.Vector2;
 using Vector4 = System.Numerics.Vector4;
@@ -233,6 +234,14 @@ public class AlertRule
         "modifiers it happens to have.")]
     public TextNode SearchTerm { get; set; } = new TextNode("");
 
+    [Menu("Wildcards (regex)",
+        "Treat each search term as a .NET regular expression instead of plain text, so " +
+        "\"MonsterMod.*Touched\" matches any Touched variant. Commas still separate terms and are " +
+        "still ANDed, so a comma cannot be used inside a pattern. Matching stays case-insensitive " +
+        "and unanchored, i.e. the pattern may match anywhere in the mod name. A pattern that will " +
+        "not compile disarms the rule rather than matching everything, and says so in its label.")]
+    public ToggleNode UseRegex { get; set; } = new ToggleNode(false);
+
     [Menu("Monster Filter")]
     public MetadataFilterSettings Metadata { get; set; } = new MetadataFilterSettings();
 
@@ -317,9 +326,79 @@ public class AlertRule
             {
                 _cachedTermSource = raw;
                 _terms = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                _patterns = null;                       // rebuilt lazily against the new terms
+                _cachedPatternSource = null;
             }
 
             return _terms;
+        }
+    }
+
+    private string _cachedPatternSource;
+    private bool _cachedPatternRegex;
+    private Regex[] _patterns;
+    private string _patternError;
+
+    /// <summary>
+    /// <see cref="Terms"/> compiled as regexes, or null when this rule matches by plain substring.
+    /// Compiled once per edit rather than per scan, since a scan tests every term against every
+    /// mod on every monster.
+    /// </summary>
+    [JsonIgnore]
+    public Regex[] Patterns
+    {
+        get
+        {
+            var terms = Terms;                          // may invalidate the cache below
+            var useRegex = UseRegex?.Value == true;
+
+            if (_patterns != null && _cachedPatternRegex == useRegex &&
+                string.Equals(_cachedPatternSource, _cachedTermSource, StringComparison.Ordinal))
+            {
+                return _patterns;
+            }
+
+            _cachedPatternSource = _cachedTermSource;
+            _cachedPatternRegex = useRegex;
+            _patternError = null;
+
+            if (!useRegex)
+            {
+                _patterns = Array.Empty<Regex>();
+                return _patterns;
+            }
+
+            var built = new List<Regex>(terms.Length);
+
+            foreach (var term in terms)
+            {
+                try
+                {
+                    built.Add(new Regex(term, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant));
+                }
+                catch (ArgumentException e)
+                {
+                    // A bad pattern must not throw on the scan thread, and must not quietly match
+                    // everything either — the rule is disarmed and says so in its label.
+                    _patternError = e.Message;
+                    built.Clear();
+                    break;
+                }
+            }
+
+            _patterns = built.ToArray();
+            return _patterns;
+        }
+    }
+
+    /// <summary>Why the pattern would not compile, or null when it is fine. Read after Patterns.</summary>
+    [JsonIgnore]
+    public string PatternError
+    {
+        get
+        {
+            _ = Patterns;
+            return _patternError;
         }
     }
 
@@ -331,6 +410,11 @@ public class AlertRule
         var term = string.IsNullOrWhiteSpace(SearchTerm?.Value)
             ? (Metadata?.IsBlank == false ? Metadata.Describe() : "<no term>")
             : SearchTerm.Value;
+
+        // A rule that cannot compile its pattern matches nothing, which is indistinguishable from
+        // "no such monster here" unless it is said out loud.
+        if (PatternError != null)
+            term = $"{term}  [BAD REGEX]";
 
         return $"{(Enabled?.Value == true ? "" : "(off) ")}{term}###";
     }

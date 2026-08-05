@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Color = SharpDX.Color;
 using RectangleF = SharpDX.RectangleF;
 using Vector2 = System.Numerics.Vector2;
@@ -357,12 +358,22 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 continue;
             }
 
+            var patterns = rule.Patterns;
+
+            // A pattern that would not compile disarms the rule. Matching everything instead would
+            // paint the whole screen; matching by the raw text would silently mean something else.
+            if (rule.UseRegex && patterns.Length != terms.Length)
+                continue;
+
             string display = null;
             var allPresent = true;
 
-            foreach (var term in terms)
+            for (var i = 0; i < terms.Length; i++)
             {
-                var hit = FirstValueContaining(values, term);
+                var hit = rule.UseRegex
+                    ? FirstValueMatching(values, patterns[i])
+                    : FirstValueContaining(values, terms[i]);
+
                 if (hit == null)
                 {
                     allPresent = false;
@@ -377,6 +388,21 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         }
 
         return best;
+    }
+
+    /// <summary>
+    /// First mod or buff name the pattern matches. Unanchored, so a pattern may match anywhere in
+    /// the name — the same reach a plain substring term has.
+    /// </summary>
+    private static string FirstValueMatching(List<string> values, Regex pattern)
+    {
+        foreach (var value in values)
+        {
+            if (pattern.IsMatch(value))
+                return value;
+        }
+
+        return null;
     }
 
     // OrdinalIgnoreCase avoids allocating a lowercased copy of every mod string each scan.
