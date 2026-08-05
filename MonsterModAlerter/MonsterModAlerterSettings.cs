@@ -79,11 +79,6 @@ public class MonsterModAlerterSettings : ISettings
     [Menu("Draw Only On Large Map", "Restrict minimap icons to the open map (Tab) only.")]
     public ToggleNode DrawOnlyOnLargeMap { get; set; } = new ToggleNode(false);
 
-    [Menu("Remembered Icon Fade",
-        "How much to fade the icon of a monster that has dropped out of range, for rules with " +
-        "Remember Position on. 1.0 draws it exactly like a live one, which makes a last known " +
-        "position indistinguishable from a monster you can currently see.")]
-    public RangeNode<float> RememberedOpacity { get; set; } = new RangeNode<float>(0.45f, 0.1f, 1.0f);
 
     [Menu("Ignore Fullscreen Panels", "Keep drawing while a fullscreen panel (Atlas, etc.) is open.")]
     public ToggleNode IgnoreFullscreenPanels { get; set; } = new ToggleNode(false);
@@ -270,9 +265,9 @@ public class AlertRule
     [Menu("Remember Position",
         "Keep this rule's icon on the map after the monster drops out of range, at the spot it was " +
         "last seen, so you can tell at a glance where the ones you have not dealt with are. " +
-        "Remembered icons are faded — see Remembered Icon Fade — because a last known position is " +
-        "not the same as knowing the monster is still there. Cleared when you change area, and " +
-        "dropped as soon as the monster is seen dead.")]
+        "Drawn exactly like a live one, so bear in mind it is a last known position rather than " +
+        "proof the monster is still there. Cleared when you change area, and dropped as soon as " +
+        "the monster is seen dead.")]
     public ToggleNode RememberPosition { get; set; } = new ToggleNode(false);
 
     [Menu("Show Mod Count",

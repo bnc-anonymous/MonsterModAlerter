@@ -562,19 +562,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         }
     }
 
-    /// <summary>
-    /// <paramref name="opacity"/> fades the whole number — digits, outline and box together. Fading
-    /// only the digits would leave a remembered count sitting inside a solid black outline, which
-    /// reads as more prominent than the live ones it is supposed to sit behind.
-    /// </summary>
     private void DrawNumber(
-        string text,
-        Vector2 size,
-        Vector2 at,
-        RectangleF region,
-        Color tint,
-        ModCountSettings settings,
-        float opacity = 1f)
+        string text, Vector2 size, Vector2 at, RectangleF region, Color tint, ModCountSettings settings)
     {
         if (!region.Contains(at.X, at.Y))
             return;
@@ -585,7 +574,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         {
             Graphics.DrawBox(
                 new RectangleF(pos.X - 2f, pos.Y - 1f, size.X + 4f, size.Y + 2f),
-                Fade(settings.BackgroundColor.Value, opacity));
+                settings.BackgroundColor.Value);
         }
 
         // Eight offset copies underneath, which reads over any terrain without covering the map
@@ -593,7 +582,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         // stay bare and the number still disappears against a busy background.
         if (settings.DrawOutline)
         {
-            var outline = Fade(settings.OutlineColor.Value, opacity);
+            var outline = settings.OutlineColor.Value;
 
             for (var dx = -1; dx <= 1; dx++)
             for (var dy = -1; dy <= 1; dy++)
@@ -603,11 +592,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             }
         }
 
-        Graphics.DrawText(text, pos, Fade(tint, opacity));
+        Graphics.DrawText(text, pos, tint);
     }
-
-    private static Color Fade(Color color, float opacity) =>
-        opacity >= 1f ? color : new Color(color.R, color.G, color.B, (byte)(color.A * opacity));
 
     private void DrawInWorld(Match match, RectangleF region)
     {
@@ -653,14 +639,11 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         }
     }
 
-    private void DrawIcon(Vector2 center, int size, AlertRule rule) =>
-        DrawIcon(center, size, rule, rule.Tint.Value);
-
-    private void DrawIcon(Vector2 center, int size, AlertRule rule, Color tint)
+    private void DrawIcon(Vector2 center, int size, AlertRule rule)
     {
         var half = size / 2f;
         var rect = new RectangleF(center.X - half, center.Y - half, size, size);
-        Graphics.DrawImage(IconAtlas.TextureName, rect, SpriteHelper.GetUV(rule.Icon), tint);
+        Graphics.DrawImage(IconAtlas.TextureName, rect, SpriteHelper.GetUV(rule.Icon), rule.Tint.Value);
     }
 
     /// <summary>
@@ -673,7 +656,6 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         if (stale.Count == 0)
             return;
 
-        var fade = Settings.RememberedOpacity.Value;
         var countSettings = Settings.ModCount;
 
         foreach (var entry in stale)
@@ -686,7 +668,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             if (!region.Contains(point.X, point.Y))
                 continue;
 
-            DrawIcon(point, rule.IconSize.Value, rule, Fade(rule.Tint.Value, fade));
+            DrawIcon(point, rule.IconSize.Value, rule);
 
             if (!rule.ShowModCount || entry.ModCount < rule.ModCountMinimum.Value)
                 continue;
@@ -700,7 +682,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 var size = Graphics.MeasureText(text);
 
                 DrawNumber(text, size, point + countSettings.OffsetFor(rule.IconSize.Value, size),
-                    region, rule.ModCountColor.Value, countSettings, fade);
+                    region, rule.ModCountColor.Value, countSettings);
             }
         }
     }
