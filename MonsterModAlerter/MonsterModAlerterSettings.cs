@@ -311,7 +311,11 @@ public class AlertRule
         "against. Ignored on a rule with no search term, which falls back to the rare count.")]
     public ToggleNode CountSearchMatches { get; set; } = new ToggleNode(false);
 
-    [Menu("Count Minimum", "Draw no number below this. 0 shows every match.")]
+    [Menu("Count Minimum",
+        "Below this count the rule does not fire at all: no icon, no number, no sound. Applies " +
+        "whether or not the number itself is being shown, so it doubles as a filter — \"only flag " +
+        "monsters with at least this many\". Counts whichever number this rule is showing, rare " +
+        "affixes or search-term matches. 0 disables it.")]
     public RangeNode<int> ModCountMinimum { get; set; } = new RangeNode<int>(0, 0, 50);
 
     [Menu("Count Colour")]

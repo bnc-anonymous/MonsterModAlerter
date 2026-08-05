@@ -383,6 +383,11 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 if (rule.Metadata?.IsBlank != false)
                     continue;
 
+                // With no term there is nothing to count matches of, so the minimum applies to the
+                // rare-affix count — the same number this rule would be showing.
+                if (modCount < rule.ModCountMinimum.Value)
+                    continue;
+
                 best = Keep(new Match(entity, rule, rule.Metadata.Describe(), modCount));
                 continue;
             }
@@ -417,6 +422,12 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 var shown = rule.CountSearchMatches
                     ? CountSearchMatches(values, rule, terms, patterns, countedMods)
                     : modCount;
+
+                // Applied here rather than at draw time so it gates the whole rule — icon, number,
+                // sound and remembered mark together — instead of leaving an unexplained icon with
+                // no number beside it.
+                if (shown < rule.ModCountMinimum.Value)
+                    continue;
 
                 best = Keep(new Match(entity, rule, display, shown));
             }
