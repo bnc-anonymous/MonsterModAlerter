@@ -125,6 +125,9 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         // cannot collide with a scan in progress.
         var values = new List<string>(16);
 
+        // Case-insensitive, since the same affix has been seen differing only in case.
+        var countedMods = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         var maxDistance = Settings.MaxDistance.Value;
         var checkMods = Settings.CheckMods;
         var checkBuffs = Settings.CheckBuffs;
@@ -141,7 +144,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             if (!Settings.Rarity.Allows(entity.Rarity))
                 continue;
 
-            var match = FindMatch(entity, rules, checkMods, checkBuffs, values);
+            var match = FindMatch(entity, rules, checkMods, checkBuffs, values, countedMods);
             if (match != null)
                 found.Add(match);
         }
@@ -156,11 +159,18 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// rather than a stack of overlapping ones. A rule matches only when every one of its
     /// comma-separated terms is found somewhere on the monster.
     /// </summary>
-    private static Match FindMatch(Entity entity, AlertRule[] rules, bool checkMods, bool checkBuffs, List<string> values)
+    private static Match FindMatch(
+        Entity entity,
+        AlertRule[] rules,
+        bool checkMods,
+        bool checkBuffs,
+        List<string> values,
+        HashSet<string> countedMods)
     {
         // Gather the monster's mod and buff names once, then test all rules against that set —
         // cheaper than re-reading components per rule, and it lets terms match across both sources.
         values.Clear();
+        countedMods.Clear();
 
         // Counted here rather than in a second pass, so the number comes from the same read as the
         // matching. Modifiers only: buffs come and go with auras and charges, and folding them in
@@ -174,11 +184,14 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 if (string.IsNullOrEmpty(mod))
                     continue;
 
-                // Only the rare-monster modifiers proper. The list also carries entries that are
-                // not rolled affixes at all, and counting those inflates the number past what the
-                // monster's own tooltip shows.
-                if (mod.StartsWith(RareModPrefix, StringComparison.OrdinalIgnoreCase))
+                // Only the rare-monster modifiers proper, and only once each. The list carries
+                // entries that are not rolled affixes at all, and repeats some of the ones that
+                // are — both inflate the number past what the monster's own tooltip shows.
+                if (mod.StartsWith(RareModPrefix, StringComparison.OrdinalIgnoreCase) &&
+                    countedMods.Add(mod))
+                {
                     modCount++;
+                }
 
                 // Match Mods only governs what terms are tested against, never the count — searching
                 // stays over every entry, since a term may well name one of the others.
@@ -362,15 +375,24 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             return;
         }
 
-        write($"    counted {match.ModCount} of {mods.Count} entries (prefix '{RareModPrefix}')", Color.White);
+        write($"    counted {match.ModCount} of {mods.Count} entries " +
+              $"(prefix '{RareModPrefix}', duplicates ignored)", Color.White);
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var mod in mods)
         {
             if (string.IsNullOrEmpty(mod))
                 continue;
 
-            var counted = mod.StartsWith(RareModPrefix, StringComparison.OrdinalIgnoreCase);
-            write($"      {(counted ? "+" : " ")} {mod}", counted ? Color.LightGreen : Color.Gray);
+            // A duplicate and a non-affix are excluded for different reasons, so they are marked
+            // differently — otherwise a wrong count sends you looking at the wrong thing.
+            if (!mod.StartsWith(RareModPrefix, StringComparison.OrdinalIgnoreCase))
+                write($"        {mod}", Color.Gray);
+            else if (seen.Add(mod))
+                write($"      + {mod}", Color.LightGreen);
+            else
+                write($"      = {mod}  (duplicate)", Color.Orange);
         }
     }
 

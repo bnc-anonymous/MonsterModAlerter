@@ -263,8 +263,9 @@ public class AlertRule
 
     [Menu("Show Mod Count",
         "Draw how many modifiers this monster has on the minimap, as a bare number like \"12\". " +
-        "Counts rolled rare-monster affixes only — the MonsterMod entries in " +
-        "ObjectMagicProperties.Mods — so the number matches what the monster's own tooltip shows. " +
+        "Counts distinct rolled rare-monster affixes only — the MonsterMod entries in " +
+        "ObjectMagicProperties.Mods, ignoring repeats, since the game lists some of them more " +
+        "than once — so the number matches what the monster's own tooltip shows. " +
         "Buffs are excluded too: they come and go with auras and charges and would make it " +
         "flicker. Turn on Debug Overlay to see the full list and which entries were counted. " +
         "Appearance is under Mod Count Display.")]
