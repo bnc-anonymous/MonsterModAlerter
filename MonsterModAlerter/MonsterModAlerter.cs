@@ -23,8 +23,9 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// never touches a component.
     /// </summary>
     /// <param name="Slot">
-    /// Position of this icon among the ones the same monster is showing, and how many there are.
-    /// Fixed during the scan rather than worked out per frame, so drawing stays a flat loop.
+    /// Which of this monster's matches this is, in priority order. The icons themselves are drawn
+    /// stacked on the monster, so this only separates the things that cannot overlap readably —
+    /// world labels — and marks the one match that draws the shared box.
     /// </param>
     private sealed record Match(
         Entity Entity, AlertRule Rule, string MatchedName, int ModCount, int Slot = 0, int SlotCount = 1);
@@ -631,20 +632,12 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     {
         var gridPos = match.Entity.GridPosNum;
         var point = Graphics.GridToMap(gridPos, gridPos);
-        point.X += SlotOffset(match, match.Rule.IconSize.Value);
 
         if (!region.Contains(point.X, point.Y))
             return;
 
         DrawIcon(point, match.Rule.IconSize.Value, match.Rule);
     }
-
-    /// <summary>
-    /// Horizontal shift that lays a monster's icons out in a row centred on it. Zero for the usual
-    /// case of a single match, so nothing moves unless a monster really does match several rules.
-    /// </summary>
-    private static float SlotOffset(Match match, int iconSize) =>
-        match.SlotCount <= 1 ? 0f : (match.Slot - (match.SlotCount - 1) / 2f) * iconSize;
 
     /// <summary>
     /// Draws each monster's modifier count as a bare number, e.g. "12". Centred on the monster so
@@ -672,6 +665,10 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         if (!any)
             return;
 
+        // One number per monster, however many of its rules ask for one: the count is a property
+        // of the monster, so drawing it twice in the same place only thickens the outline.
+        var numbered = new HashSet<uint>();
+
         using (Graphics.SetTextScale(settings.TextScale.Value))
         {
             foreach (var match in matches)
@@ -681,6 +678,9 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 if (!rule.ShowModCount || match.ModCount < rule.ModCountMinimum.Value)
                     continue;
 
+                if (!numbered.Add(match.Entity.Id))
+                    continue;
+
                 if (!match.Entity.IsValid || !match.Entity.IsAlive)
                     continue;
 
@@ -688,22 +688,18 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 var size = Graphics.MeasureText(text);
                 var tint = rule.ModCountColor.Value;
 
-                // Shifted by the same slot offset as the icon it belongs to, or every matching
-                // rule's number would pile up on the monster's exact position.
                 if (minimapVisible && rule.ShowOnMinimap)
                 {
                     var grid = match.Entity.GridPosNum;
                     var at = Graphics.GridToMap(grid, grid) + settings.OffsetFor(rule.IconSize.Value, size);
-                    at.X += SlotOffset(match, rule.IconSize.Value);
                     DrawNumber(text, size, at, region, tint, settings);
                 }
 
                 if (alsoWorld && Settings.World.Enable && rule.ShowInWorld)
                 {
                     var screen = GameController.IngameState.Camera.WorldToScreen(match.Entity.PosNum);
-                    var at = screen + settings.OffsetFor(rule.WorldIconSize.Value, size);
-                    at.X += SlotOffset(match, rule.WorldIconSize.Value);
-                    DrawNumber(text, size, at, region, tint, settings);
+                    DrawNumber(text, size, screen + settings.OffsetFor(rule.WorldIconSize.Value, size),
+                        region, tint, settings);
                 }
             }
         }
@@ -764,11 +760,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 world.Thickness.Value);
         }
 
-        // Only the icon and its label fan out; the box above stays centred on the monster.
-        var slotX = screenPos.X + SlotOffset(match, worldIconSize);
-
         if (world.DrawIcon)
-            DrawIcon(new Vector2(slotX, screenPos.Y), worldIconSize, match.Rule);
+            DrawIcon(screenPos, worldIconSize, match.Rule);
 
         if (!world.DrawLabel)
             return;
@@ -788,7 +781,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             // Stacked rather than side by side: labels are far wider than icons, so a row of them
             // would run into each other and into the neighbouring monsters'.
             var y = screenPos.Y + halfExtent + labelGap + match.Slot * (textSize.Y + labelGap);
-            Graphics.DrawText(text, new Vector2(slotX - textSize.X / 2f, y), world.LabelColor.Value);
+            Graphics.DrawText(text, new Vector2(screenPos.X - textSize.X / 2f, y), world.LabelColor.Value);
         }
     }
 

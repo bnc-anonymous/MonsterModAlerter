@@ -52,10 +52,9 @@ public class MonsterModAlerterSettings : ISettings
     public ToggleNode CheckBuffs { get; set; } = new ToggleNode(true);
 
     [Menu("Allow Multiple Matches",
-        "Show every rule that matches a monster, not just the highest-priority one. The icons are " +
-        "laid out in a row centred on the monster, since drawn at its exact position they would sit " +
-        "perfectly on top of each other and only the top one would be visible. Turn off to go back " +
-        "to one icon per monster, chosen by Priority.")]
+        "Draw every rule that matches a monster, not just the highest-priority one. The icons are " +
+        "stacked on the monster in priority order, so the highest-priority one sits on top and the " +
+        "others show through wherever it is transparent. Turn off for one icon per monster.")]
     public ToggleNode AllowMultipleMatches { get; set; } = new ToggleNode(true);
 
     [Menu("Global Rarity Filter",
