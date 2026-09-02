@@ -11,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using System.Windows.Forms;
 using Color = SharpDX.Color;
 using Vector2N = System.Numerics.Vector2;
 using Vector4 = System.Numerics.Vector4;
@@ -38,6 +39,21 @@ public class MonsterModAlerterSettings : ISettings
         // so a pre-populated list would be appended to on every load. Seeded by the plugin instead.
         Content = new List<AlertRule>(),
     };
+
+    [Menu("Add Critter Rule",
+        "Adds a ready-made rule that marks every critter - ferrets, basilisks, the rest of the " +
+        "wildlife - with a small green dot on the minimap, and counts them in the Seen This Map " +
+        "tally. It is an ordinary rule once added: change its icon, colour or size, or delete it. " +
+        "This is a button rather than a default because defaults only ever reach a fresh install.")]
+    [JsonIgnore]
+    public ButtonNode AddCritterRule { get; set; } = new ButtonNode();
+
+    /// <summary>
+    /// Set by the button above and consumed on the next Tick, for the same reason
+    /// <see cref="ResetRequested"/> is: the rule list must not be added to while ImGui is drawing it.
+    /// </summary>
+    [JsonIgnore]
+    public bool AddCritterRuleRequested { get; set; }
 
     [Menu("Refresh Now",
         "Forces an immediate re-scan and clears the 'already alerted' list, so matching monsters " +
@@ -76,6 +92,10 @@ public class MonsterModAlerterSettings : ISettings
     [Menu("Mod Count Display",
         "Appearance of the modifier-count numbers. Turn them on per rule, under Alert Rules.")]
     public ModCountSettings ModCount { get; set; } = new ModCountSettings();
+
+    [Menu("Seen This Map Counter",
+        "On-screen tally of everything your rules have matched since you entered the area.")]
+    public SeenPanelSettings SeenPanel { get; set; } = new SeenPanelSettings();
 
     [Menu("World Overlay")]
     public WorldDrawSettings World { get; set; } = new WorldDrawSettings();
@@ -229,6 +249,27 @@ public class AlertRule
         Icon = MapIconsIndex.CorpseTypeUndead,
     };
 
+    /// <summary>
+    /// Every critter, marked with a small green dot. Matched on the path alone - a critter has no
+    /// mods and no buffs to search - which is why it needs Match Any Entity: the rarity filters
+    /// would otherwise discard the lot of them.
+    /// </summary>
+    public static AlertRule Critters() => new AlertRule
+    {
+        SearchTerm = new TextNode(""),
+        AnyEntity = new ToggleNode(true),
+        Metadata = new MetadataFilterSettings { Filter = new TextNode("Metadata/Critters") },
+        Label = new TextNode("Critter"),
+        Icon = MapIconsIndex.LootFilterSmallGreenCircle,
+        IconSize = new RangeNode<int>(16, 4, 100),
+        WorldIconSize = new RangeNode<int>(24, 4, 256),
+
+        // There are a great many of them and they are harmless: a sound per critter would be a
+        // constant noise, and it is the tally rather than an alert that these are wanted for.
+        PlaySound = new ToggleNode(false),
+        Priority = new RangeNode<int>(-50, -100, 100),
+    };
+
     [Menu("Enabled")]
     public ToggleNode Enabled { get; set; } = new ToggleNode(true);
 
@@ -247,6 +288,16 @@ public class AlertRule
         "and unanchored, i.e. the pattern may match anywhere in the mod name. A pattern that will " +
         "not compile disarms the rule rather than matching everything, and says so in its label.")]
     public ToggleNode UseRegex { get; set; } = new ToggleNode(false);
+
+    [Menu("Match Any Entity",
+        "Off (default): this rule only looks at hostile monsters, and both rarity filters apply. " +
+        "On: it is tested against every entity the game has loaded - critters, chests, doors, " +
+        "shrines, objects - with the hostile and rarity checks skipped, since those are monster " +
+        "concepts and would throw all of these away. The entity's metadata path is searched as " +
+        "well as any mods and buffs it has, because most non-monster entities carry neither, so " +
+        "a search term of \"Metadata/Critters\" flags every critter. The Monster Filter below " +
+        "matches the same path, so either will do.")]
+    public ToggleNode AnyEntity { get; set; } = new ToggleNode(false);
 
     [Menu("Monster Filter")]
     public MetadataFilterSettings Metadata { get; set; } = new MetadataFilterSettings();
@@ -434,6 +485,11 @@ public class AlertRule
         if (PatternError != null)
             term = $"{term}  [BAD REGEX]";
 
+        // A rule that is not restricted to monsters behaves differently enough - no rarity filter,
+        // and it searches the metadata path - that the list should say so without opening it.
+        if (AnyEntity?.Value == true)
+            term = $"[any] {term}";
+
         return $"{(Enabled?.Value == true ? "" : "(off) ")}{term}###";
     }
 
@@ -611,6 +667,58 @@ public class MetadataFilterSettings
 
     public string Describe() =>
         IsBlank ? "any monster" : (Exclude ? "not " : "") + Filter.Value;
+}
+
+/// <summary>
+/// The on-screen tally of what has been matched since entering the area. Counts entities, not
+/// matches: an entity that several rules picked out is still one thing that was seen once.
+/// </summary>
+[Submenu(CollapsedByDefault = true)]
+public class SeenPanelSettings
+{
+    [Menu("Show Counter",
+        "Lists how many of each kind of thing your rules have matched since you entered the area, " +
+        "named by metadata path with the \"Metadata/Critters/\" or \"Metadata/Monsters/\" prefix " +
+        "removed. Only things a rule matched are counted, so it tallies what you asked to be shown " +
+        "rather than everything in the zone. Resets on area change.")]
+    public ToggleNode Show { get; set; } = new ToggleNode(false);
+
+    [Menu("Toggle Key",
+        "Shows and hides the counter in game. Leave as None to toggle it from this menu only.")]
+    public HotkeyNodeV2 ToggleKey { get; set; } = new HotkeyNodeV2(Keys.None);
+
+    [Menu("X", "Distance from the left edge of the window, in pixels.")]
+    public RangeNode<int> X { get; set; } = new RangeNode<int>(20, 0, 4000);
+
+    [Menu("Y", "Distance from the top edge of the window, in pixels.")]
+    public RangeNode<int> Y { get; set; } = new RangeNode<int>(300, 0, 3000);
+
+    [Menu("Text Size")]
+    public RangeNode<float> TextScale { get; set; } = new RangeNode<float>(1.0f, 0.5f, 3.0f);
+
+    [Menu("Max Rows",
+        "Longest list to draw. Rows are ordered by count, so the ones left off are the rarest; " +
+        "a line at the bottom says how many were not shown.")]
+    public RangeNode<int> MaxRows { get; set; } = new RangeNode<int>(20, 1, 60);
+
+    [Menu("Background")]
+    public ToggleNode DrawBackground { get; set; } = new ToggleNode(true);
+
+    [Menu("Background Colour")]
+    public ColorNode BackgroundColor { get; set; } = new ColorNode(new Color(0, 0, 0, 180));
+
+    [Menu("Heading Colour")]
+    public ColorNode HeaderColor { get; set; } = new ColorNode(Color.Orange);
+
+    [Menu("Name Colour")]
+    public ColorNode TextColor { get; set; } = new ColorNode(Color.White);
+
+    [Menu("Count Colour")]
+    public ColorNode CountColor { get; set; } = new ColorNode(Color.Yellow);
+
+    [Menu("Reset Counts", "Empties the tally without waiting for the next area.")]
+    [JsonIgnore]
+    public ButtonNode Reset { get; set; } = new ButtonNode();
 }
 
 /// <summary>

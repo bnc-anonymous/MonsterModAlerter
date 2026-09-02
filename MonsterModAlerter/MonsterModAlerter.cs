@@ -27,8 +27,17 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// stacked on the monster, so this only separates the things that cannot overlap readably —
     /// world labels — and marks the one match that draws the shared box.
     /// </param>
+    /// <param name="CheckAlive">
+    /// Whether IsAlive says anything about this entity. True for anything out of the monster list;
+    /// false for the rest, where a chest or a door has no life to be alive with and asking would
+    /// hide it. Their equivalent check is a Life component reading zero — see <see cref="IsDead"/>.
+    /// </param>
     private sealed record Match(
-        Entity Entity, AlertRule Rule, string MatchedName, int ModCount, int Slot = 0, int SlotCount = 1);
+        Entity Entity, AlertRule Rule, string MatchedName, int ModCount, bool CheckAlive = true,
+        int Slot = 0, int SlotCount = 1);
+
+    /// <summary>One line of the seen-this-map tally: a shortened metadata path and how many of it.</summary>
+    private sealed record SeenRow(string Name, int Count);
 
     /// <summary>
     /// Prefix ObjectMagicProperties.Mods uses for a rolled rare-monster affix, e.g.
@@ -53,6 +62,25 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
     private readonly HashSet<uint> _alertedEntityIds = new();
 
+    // Seen-this-map tally. Owned by the scan thread; Render only reads the _seenRows snapshot,
+    // rebuilt on the scan that changes it rather than per frame.
+    private readonly Dictionary<string, int> _seen = new(StringComparer.Ordinal);
+    private readonly HashSet<uint> _seenIds = new();
+    private volatile List<SeenRow> _seenRows = new();
+    private bool _seenDirty;
+
+    /// <summary>
+    /// Set by the Reset Counts button and consumed on the next Tick. Deferred for the same reason
+    /// the settings reset is: the button fires on the UI thread, and emptying the tally underneath
+    /// a scan that is walking it would throw.
+    /// </summary>
+    private volatile bool _resetSeenRequested;
+
+    // What the last scan actually walked, for the debug overlay. Written by the scan thread and
+    // read by Render; both are single values, so a torn read is not possible.
+    private int _lastEntityCount;
+    private int _lastAnyMatchCount;
+
     private readonly Stopwatch _scanTimer = Stopwatch.StartNew();
     private readonly Stopwatch _soundTimer = Stopwatch.StartNew();
 
@@ -73,6 +101,14 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             Settings.Rules.Content.Add(AlertRule.Default());
 
         Settings.ForceRefresh.OnPressed = ForceRefresh;
+        Settings.SeenPanel.Reset.OnPressed = () => _resetSeenRequested = true;
+        Settings.AddCritterRule.OnPressed = () => Settings.AddCritterRuleRequested = true;
+
+        // Registered with the HUD's own input handling, which is what makes PressedOnce work.
+        // Re-registered on change, since the key it was told about is the one it watches.
+        var toggleKey = Settings.SeenPanel.ToggleKey;
+        Input.RegisterKey(toggleKey.Value);
+        toggleKey.OnValueChanged += () => Input.RegisterKey(toggleKey.Value);
 
         return true;
     }
@@ -83,6 +119,17 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         _outOfRange = new List<Remembered>();
         _remembered.Clear();
         _alertedEntityIds.Clear();
+
+        // "This map" is the whole of what the tally means, so a new area is where it starts again.
+        ClearSeen();
+    }
+
+    private void ClearSeen()
+    {
+        _seen.Clear();
+        _seenIds.Clear();
+        _seenRows = new List<SeenRow>();
+        _seenDirty = false;
     }
 
     /// <summary>
@@ -118,8 +165,28 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             LogMessage($"{Name}: all rules deleted and settings restored to defaults.");
         }
 
+        if (Settings.AddCritterRuleRequested)
+        {
+            Settings.AddCritterRuleRequested = false;
+            Settings.Rules.Content.Add(AlertRule.Critters());
+            ForceRefresh();
+            LogMessage($"{Name}: added a rule marking every Metadata/Critters entity.");
+        }
+
+        if (_resetSeenRequested)
+        {
+            _resetSeenRequested = false;
+            ClearSeen();
+        }
+
         if (!Settings.Enable || !GameController.InGame)
             return null;
+
+        // Polled before the scan interval gate, so the key still answers on the frames that do not
+        // re-scan. Toggling the setting itself is deliberate: the menu tick and the key are one
+        // switch, not two that can disagree.
+        if (Settings.SeenPanel.ToggleKey.PressedOnce())
+            Settings.SeenPanel.Show.Value = !Settings.SeenPanel.Show.Value;
 
         if (_scanTimer.ElapsedMilliseconds < Settings.ScanIntervalMs)
             return null;
@@ -161,6 +228,18 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         var checkBuffs = Settings.CheckBuffs;
         var allowMultiple = Settings.AllowMultipleMatches;
 
+        // Whether anything is asking to see past the monster list at all. When nothing is, the
+        // second walk below never happens and this behaves exactly as it did before.
+        var anyEntityRules = false;
+        foreach (var rule in rules)
+        {
+            if (rule.AnyEntity?.Value == true)
+            {
+                anyEntityRules = true;
+                break;
+            }
+        }
+
         // Refilled per entity by FindMatch; allocated once for the same reason as `values`.
         var collected = new List<Match>(4);
 
@@ -169,9 +248,25 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         // ForgetVanished.
         var present = _remembered.Count > 0 ? new HashSet<uint>() : null;
 
+        // Which entities the monster walk has already offered to every rule. The second walk skips
+        // these rather than skipping by entity type: whether the game files it under Monster is
+        // exactly what we do not want to depend on, since critters may well be filed there too.
+        var walked = anyEntityRules ? new HashSet<uint>() : null;
+
+        var anyMatches = 0;
+
         foreach (var entity in GameController.EntityListWrapper.ValidEntitiesByType[EntityType.Monster])
         {
-            if (entity == null || !entity.IsHostile)
+            if (entity == null)
+                continue;
+
+            walked?.Add(entity.Id);
+
+            // Non-hostile things in this list are still offered to Match Any Entity rules below —
+            // they are only disqualified from being a monster, which is what those rules are for.
+            var hostile = entity.IsHostile;
+
+            if (!hostile && !anyEntityRules)
                 continue;
 
             present?.Add(entity.Id);
@@ -187,15 +282,85 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             if (maxDistance > 0 && entity.DistancePlayer > maxDistance)
                 continue;
 
-            // Global filter — the cheap gate that applies to every alert rule.
-            if (!Settings.Rarity.Allows(entity.Rarity))
+            // Global filter — the cheap gate that applies to every monster-only alert rule. Rarity
+            // is a monster's own property, so it does not gate the rules that are not asking for
+            // one; those would be thrown away wholesale by a filter set to Rare + Unique.
+            var monsterOk = hostile && Settings.Rarity.Allows(entity.Rarity);
+
+            if (!monsterOk && !anyEntityRules)
                 continue;
 
-            var match = FindMatch(entity, rules, checkMods, checkBuffs, values, countedMods,
-                allowMultiple, collected);
+            if (Consider(entity, monsterOk, anyEntityRules, checkAlive: true) && !monsterOk)
+                anyMatches++;
+        }
+
+        if (anyEntityRules)
+        {
+            // Everything the game has loaded, monsters included — the monster list is a subset of
+            // it, which is why the ids already walked are skipped. Only entered when a rule asks
+            // for it, since this is the whole entity list rather than one bucket of it.
+            var all = GameController.EntityListWrapper.Entities;
+            _lastEntityCount = all?.Count ?? 0;
+
+            if (all != null)
+            {
+                try
+                {
+                    foreach (var entity in all)
+                    {
+                        if (entity == null || walked.Contains(entity.Id) || !entity.IsValid)
+                            continue;
+
+                        // Anything without a position cannot be drawn on the map or in the world,
+                        // and asking one how far away it is is what would throw. This is also the
+                        // line between things that are somewhere and bookkeeping entities.
+                        if (!entity.HasComponent<Positioned>())
+                            continue;
+
+                        present?.Add(entity.Id);
+
+                        // A door or a chest has no life to lose, so absence of the component means
+                        // alive here rather than dead — the opposite of what IsAlive would answer.
+                        if (IsDead(entity))
+                        {
+                            _remembered.Remove(entity.Id);
+                            continue;
+                        }
+
+                        if (maxDistance > 0 && entity.DistancePlayer > maxDistance)
+                            continue;
+
+                        if (Consider(entity, monsterOk: false, anyOk: true, checkAlive: false))
+                            anyMatches++;
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // The HUD adds and removes entities on its own thread. If it did so mid-walk,
+                    // this scan is simply abandoned - the next one is 250ms away and will see the
+                    // settled list. Deliberately narrow: anything else is a bug worth surfacing.
+                }
+            }
+        }
+        else
+        {
+            _lastEntityCount = 0;
+        }
+
+        _lastAnyMatchCount = anyMatches;
+
+        if (present != null)
+            ForgetVanished(present);
+
+        // Runs the rules against one entity and files whatever they said. Returns whether anything
+        // matched, so the caller can count what the second walk is contributing.
+        bool Consider(Entity entity, bool monsterOk, bool anyOk, bool checkAlive)
+        {
+            var match = FindMatch(entity, rules, monsterOk, anyOk, checkMods, checkBuffs, values,
+                countedMods, allowMultiple, collected, checkAlive);
 
             if (match == null)
-                continue;
+                return false;
 
             if (allowMultiple)
             {
@@ -209,6 +374,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 found.Add(match);
             }
 
+            RecordSeen(entity);
+
             // The highest-priority match owns the remembered icon, whether or not the others are
             // also being drawn — one monster leaves one mark on the map.
             if (match.Rule.RememberPosition)
@@ -221,15 +388,20 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 // The option was turned off, or a higher-priority rule without it now wins.
                 _remembered.Remove(entity.Id);
             }
-        }
 
-        if (present != null)
-            ForgetVanished(present);
+            return true;
+        }
 
         // Ascending priority so the highest-priority icon is drawn last, i.e. on top.
         found.Sort((a, b) => a.Rule.Priority.Value.CompareTo(b.Rule.Priority.Value));
         _matches = found;
         _outOfRange = BuildOutOfRange(found);
+
+        if (_seenDirty)
+        {
+            _seenRows = BuildSeenRows();
+            _seenDirty = false;
+        }
     }
 
     /// <summary>
@@ -303,15 +475,24 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// rather than a stack of overlapping ones. A rule matches only when every one of its
     /// comma-separated terms is found somewhere on the monster.
     /// </summary>
+    /// <param name="monsterOk">
+    /// Whether this entity qualifies as a monster this scan: hostile, alive and past the global
+    /// rarity filter. Rules that were not asked to look further than monsters are skipped when it
+    /// is false.
+    /// </param>
+    /// <param name="anyOk">Whether Match Any Entity rules should be offered this entity.</param>
     private static Match FindMatch(
         Entity entity,
         AlertRule[] rules,
+        bool monsterOk,
+        bool anyOk,
         bool checkMods,
         bool checkBuffs,
         List<string> values,
         HashSet<string> countedMods,
         bool all,
-        List<Match> collected)
+        List<Match> collected,
+        bool checkAlive)
     {
         collected.Clear();
 
@@ -362,8 +543,17 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         foreach (var rule in rules)
         {
+            var anyEntity = rule.AnyEntity?.Value == true;
+
+            // Each rule sees the entities its own target covers: monster rules only the things
+            // that passed the monster gates, Match Any Entity rules everything else as well.
+            if (anyEntity ? !anyOk : !monsterOk)
+                continue;
+
             // Per-rule rarity intersects with the global filter, so a rule can only narrow it.
-            if (!rule.Rarity.Allows(entity.Rarity))
+            // Skipped alongside the global one for a rule that is not asking for monsters, for the
+            // same reason: a chest has no rarity to pass.
+            if (!anyEntity && !rule.Rarity.Allows(entity.Rarity))
                 continue;
 
             // Already holding something this rule cannot outrank. Skipped when collecting every
@@ -388,7 +578,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 if (modCount < rule.ModCountMinimum.Value)
                     continue;
 
-                best = Keep(new Match(entity, rule, rule.Metadata.Describe(), modCount));
+                best = Keep(new Match(entity, rule, rule.Metadata.Describe(), modCount, checkAlive));
                 continue;
             }
 
@@ -408,6 +598,12 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                     ? FirstValueMatching(values, patterns[i])
                     : FirstValueContaining(values, terms[i]);
 
+                // Most things that are not monsters carry no mods and no buffs, so their metadata
+                // path is the only thing a term can match. Offered to these rules only: adding it
+                // for monster rules would quietly widen every rule already written.
+                if (hit == null && anyEntity && PathMatches(path, rule, terms[i], patterns, i))
+                    hit = ShortName(path);
+
                 if (hit == null)
                 {
                     allPresent = false;
@@ -420,7 +616,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             if (allPresent)
             {
                 var shown = rule.CountSearchMatches
-                    ? CountSearchMatches(values, rule, terms, patterns, countedMods)
+                    ? CountSearchMatches(values, rule, terms, patterns, countedMods,
+                        anyEntity ? path : null)
                     : modCount;
 
                 // Applied here rather than at draw time so it gates the whole rule — icon, number,
@@ -429,7 +626,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 if (shown < rule.ModCountMinimum.Value)
                     continue;
 
-                best = Keep(new Match(entity, rule, display, shown));
+                best = Keep(new Match(entity, rule, display, shown, checkAlive));
             }
         }
 
@@ -453,8 +650,13 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// all, and by this point it has. Asking "how many match" then means how many entries any of
     /// them picked out, which for the usual single-term rule is exactly the number of hits.
     /// </summary>
+    /// <param name="path">
+    /// The entity's metadata path when this rule searches it too (Match Any Entity), otherwise
+    /// null. Counted like any other value it matched, so a critter rule reads 1 rather than 0.
+    /// </param>
     private static int CountSearchMatches(
-        List<string> values, AlertRule rule, string[] terms, Regex[] patterns, HashSet<string> scratch)
+        List<string> values, AlertRule rule, string[] terms, Regex[] patterns, HashSet<string> scratch,
+        string path)
     {
         // Safe to borrow: the rare-affix count that used this is already final by now. Cleared per
         // call because several rules may each ask, and the game repeats entries in the mod list.
@@ -493,7 +695,105 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 count++;
         }
 
+        if (path != null && scratch.Add(path))
+        {
+            for (var i = 0; i < terms.Length; i++)
+            {
+                if (PathMatches(path, rule, terms[i], patterns, i))
+                {
+                    count++;
+                    break;
+                }
+            }
+        }
+
         return count;
+    }
+
+    /// <summary>
+    /// Whether one of a rule's terms matches the entity's metadata path, by the same rules the
+    /// mod and buff names are matched by — substring or regex, case-insensitive either way.
+    /// </summary>
+    private static bool PathMatches(string path, AlertRule rule, string term, Regex[] patterns, int index)
+    {
+        if (string.IsNullOrEmpty(path))
+            return false;
+
+        return rule.UseRegex
+            ? index < patterns.Length && patterns[index].IsMatch(path)
+            : path.Contains(term, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Whether this entity is a corpse. Only the Life component is consulted, and only when it has
+    /// one: a chest or a doorway has no life, and answering "dead" for those would hide every one
+    /// of them. Monsters are asked IsAlive instead, which is meaningful for them.
+    /// </summary>
+    private static bool IsDead(Entity entity) =>
+        entity.TryGetComponent<Life>(out var life) && life != null && life.CurHP <= 0;
+
+    /// <summary>
+    /// The metadata path with the part that is the same for everything removed, e.g.
+    /// Metadata/Critters/Ferret/Ferret becomes Ferret/Ferret. What is left is what distinguishes
+    /// one thing from another, which is the whole job of a name in the tally.
+    /// </summary>
+    private static string ShortName(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return "<no path>";
+
+        foreach (var prefix in ShortNamePrefixes)
+        {
+            if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return path[prefix.Length..];
+        }
+
+        return path;
+    }
+
+    /// <summary>
+    /// Longest first, so Metadata/Critters/ is taken off before the bare Metadata/ that also
+    /// matches it. The last one is a catch-all for everything else a Match Any Entity rule can
+    /// pick up - chests, doors, shrines - which are all under Metadata/ too.
+    /// </summary>
+    private static readonly string[] ShortNamePrefixes =
+        ["Metadata/Critters/", "Metadata/Monsters/", "Metadata/"];
+
+    /// <summary>
+    /// Adds one entity to the seen-this-map tally, the first time it is matched. Keyed by entity
+    /// id, so a monster that leaves and re-enters range is the same one thing rather than two, and
+    /// so a monster several rules matched is counted once.
+    /// </summary>
+    private void RecordSeen(Entity entity)
+    {
+        if (!_seenIds.Add(entity.Id))
+            return;
+
+        var name = ShortName(entity.Path);
+        _seen.TryGetValue(name, out var count);
+        _seen[name] = count + 1;
+        _seenDirty = true;
+    }
+
+    /// <summary>
+    /// The tally as an ordered snapshot for Render to read. Rebuilt only on the scan that changed
+    /// it: the panel is redrawn every frame, and re-sorting a dictionary per frame to draw the
+    /// same twenty lines would be the expensive part of it.
+    /// </summary>
+    private List<SeenRow> BuildSeenRows()
+    {
+        var rows = new List<SeenRow>(_seen.Count);
+
+        foreach (var entry in _seen)
+            rows.Add(new SeenRow(entry.Key, entry.Value));
+
+        // Commonest first, since a long list is cut off at the bottom and the rarest thing is the
+        // one worth losing. Ties by name, so the order does not shuffle as counts climb.
+        rows.Sort((a, b) => b.Count != a.Count
+            ? b.Count.CompareTo(a.Count)
+            : string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+
+        return rows;
     }
 
     /// <summary>
@@ -528,7 +828,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         var matches = _matches;
         var outOfRange = _outOfRange;
 
-        if (!Settings.Enable || !GameController.InGame || (matches.Count == 0 && outOfRange.Count == 0))
+        if (!Settings.Enable || !GameController.InGame)
             return;
 
         var ingameUi = GameController.IngameState.IngameUi;
@@ -539,6 +839,10 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         if (!Settings.IgnoreLargePanels && ingameUi.LargePanels.Any(x => x.IsVisible))
             return;
 
+        // Drawn before the nothing-to-draw check below: the tally is a record of the whole map, so
+        // it has to stay up on the screen where you have already killed everything.
+        DrawSeenPanel();
+
         // The inventory/stash only cover part of the screen, so rather than hiding everything we
         // shrink the drawable area to the part they leave uncovered, the way Radar does.
         var region = GetDrawRegion(ingameUi);
@@ -548,13 +852,23 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             ? largeMapVisible
             : largeMapVisible || ingameUi.Map.SmallMiniMap.IsVisibleLocal;
 
+        // Nothing matched is exactly the state the overlay is opened to explain, so it is drawn
+        // before bowing out rather than only when there is already something on the screen.
+        if (matches.Count == 0 && outOfRange.Count == 0)
+        {
+            if (Settings.DebugOverlay)
+                DrawDebugOverlay(matches, region, ingameUi, minimapVisible);
+
+            return;
+        }
+
         // Drawn first, so a live monster's icon always sits on top of a remembered one.
         if (minimapVisible)
             DrawRemembered(outOfRange, region);
 
         foreach (var match in matches)
         {
-            if (!match.Entity.IsValid || !match.Entity.IsAlive)
+            if (!match.Entity.IsValid || (match.CheckAlive && !match.Entity.IsAlive))
                 continue;
 
             if (minimapVisible && match.Rule.ShowOnMinimap)
@@ -569,6 +883,86 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         if (Settings.DebugOverlay)
             DrawDebugOverlay(matches, region, ingameUi, minimapVisible);
+    }
+
+    /// <summary>
+    /// The seen-this-map tally, drawn as a two-column list at a fixed spot on the screen. Read
+    /// from the snapshot the scan left behind, so nothing here touches an entity or a component.
+    /// </summary>
+    private void DrawSeenPanel()
+    {
+        var panel = Settings.SeenPanel;
+        if (!panel.Show)
+            return;
+
+        var rows = _seenRows;
+
+        var total = 0;
+        foreach (var row in rows)
+            total += row.Count;
+
+        using (Graphics.SetTextScale(panel.TextScale.Value))
+        {
+            var shown = Math.Min(rows.Count, panel.MaxRows.Value);
+            var heading = rows.Count == 0
+                ? "Seen this map: nothing yet"
+                : $"Seen this map: {total} in {rows.Count} kind{(rows.Count == 1 ? "" : "s")}";
+
+            var headingSize = Graphics.MeasureText(heading);
+            var lineHeight = headingSize.Y;
+
+            // Names and counts are measured before anything is drawn, because the count column is
+            // right-aligned to the widest row rather than to a guessed width.
+            var width = headingSize.X;
+            const float columnGap = 20f;
+
+            for (var i = 0; i < shown; i++)
+            {
+                var row = rows[i];
+                var rowWidth = Graphics.MeasureText(row.Name).X + columnGap +
+                               Graphics.MeasureText(row.Count.ToString()).X;
+                width = Math.Max(width, rowWidth);
+            }
+
+            var truncated = rows.Count - shown;
+            var footer = truncated > 0 ? $"... and {truncated} more" : null;
+
+            if (footer != null)
+            {
+                width = Math.Max(width, Graphics.MeasureText(footer).X);
+                lineHeight = Math.Max(lineHeight, Graphics.MeasureText(footer).Y);
+            }
+
+            float x = panel.X.Value;
+            float y = panel.Y.Value;
+
+            if (panel.DrawBackground)
+            {
+                const float pad = 6f;
+                var lines = 1 + shown + (footer != null ? 1 : 0);
+                Graphics.DrawBox(
+                    new RectangleF(x - pad, y - pad, width + pad * 2, lines * lineHeight + pad * 2),
+                    panel.BackgroundColor.Value);
+            }
+
+            Graphics.DrawText(heading, new Vector2(x, y), panel.HeaderColor.Value);
+            y += lineHeight;
+
+            for (var i = 0; i < shown; i++)
+            {
+                var row = rows[i];
+                var count = row.Count.ToString();
+
+                Graphics.DrawText(row.Name, new Vector2(x, y), panel.TextColor.Value);
+                Graphics.DrawText(count,
+                    new Vector2(x + width - Graphics.MeasureText(count).X, y), panel.CountColor.Value);
+
+                y += lineHeight;
+            }
+
+            if (footer != null)
+                Graphics.DrawText(footer, new Vector2(x, y), panel.TextColor.Value);
+        }
     }
 
     /// <summary>
@@ -588,6 +982,13 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         Write($"[{Name}] matches={matches.Count}  rules={Settings.Rules.Content.Count}  " +
               $"remembered={_remembered.Count} (drawn stale={_outOfRange.Count})", Color.White);
+
+        // The second walk is the one that is easy to be wrong about: entities=0 says no rule asked
+        // for anything past the monster list, which is the first thing to check when a critter rule
+        // draws nothing at all.
+        Write($"  any-entity walk: entities={_lastEntityCount}  matches outside the monster gates=" +
+              $"{_lastAnyMatchCount}  seen this map={_seenRows.Count} kinds",
+            _lastEntityCount > 0 ? Color.LightGreen : Color.White);
 
         // The nearest remembered monster and whether it is inside the forget radius: if an icon is
         // lingering, this says whether we are simply not close enough yet to disprove it.
@@ -751,7 +1152,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 if (!numbered.Add(match.Entity.Id))
                     continue;
 
-                if (!match.Entity.IsValid || !match.Entity.IsAlive)
+                if (!match.Entity.IsValid || (match.CheckAlive && !match.Entity.IsAlive))
                     continue;
 
                 var text = match.ModCount.ToString();
