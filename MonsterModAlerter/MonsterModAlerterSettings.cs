@@ -40,21 +40,6 @@ public class MonsterModAlerterSettings : ISettings
         Content = new List<AlertRule>(),
     };
 
-    [Menu("Add Critter Rule",
-        "Adds a ready-made rule that marks every critter - ferrets, basilisks, the rest of the " +
-        "wildlife - with a small green dot on the minimap, and counts them in the Seen This Map " +
-        "tally. It is an ordinary rule once added: change its icon, colour or size, or delete it. " +
-        "This is a button rather than a default because defaults only ever reach a fresh install.")]
-    [JsonIgnore]
-    public ButtonNode AddCritterRule { get; set; } = new ButtonNode();
-
-    /// <summary>
-    /// Set by the button above and consumed on the next Tick, for the same reason
-    /// <see cref="ResetRequested"/> is: the rule list must not be added to while ImGui is drawing it.
-    /// </summary>
-    [JsonIgnore]
-    public bool AddCritterRuleRequested { get; set; }
-
     [Menu("Refresh Now",
         "Forces an immediate re-scan and clears the 'already alerted' list, so matching monsters " +
         "are re-detected and can announce again. Sizes, icons and colours apply live without this.")]
@@ -249,27 +234,6 @@ public class AlertRule
         Icon = MapIconsIndex.CorpseTypeUndead,
     };
 
-    /// <summary>
-    /// Every critter, marked with a small green dot. Matched on the path alone - a critter has no
-    /// mods and no buffs to search - which is why it needs Match Any Entity: the rarity filters
-    /// would otherwise discard the lot of them.
-    /// </summary>
-    public static AlertRule Critters() => new AlertRule
-    {
-        SearchTerm = new TextNode(""),
-        AnyEntity = new ToggleNode(true),
-        Metadata = new MetadataFilterSettings { Filter = new TextNode("Metadata/Critters") },
-        Label = new TextNode("Critter"),
-        Icon = MapIconsIndex.LootFilterSmallGreenCircle,
-        IconSize = new RangeNode<int>(16, 4, 100),
-        WorldIconSize = new RangeNode<int>(24, 4, 256),
-
-        // There are a great many of them and they are harmless: a sound per critter would be a
-        // constant noise, and it is the tally rather than an alert that these are wanted for.
-        PlaySound = new ToggleNode(false),
-        Priority = new RangeNode<int>(-50, -100, 100),
-    };
-
     [Menu("Enabled")]
     public ToggleNode Enabled { get; set; } = new ToggleNode(true);
 
@@ -335,6 +299,13 @@ public class AlertRule
 
     [Menu("Show In World")]
     public ToggleNode ShowInWorld { get; set; } = new ToggleNode(true);
+
+    [Menu("Count In Seen This Map",
+        "Include what this rule matches in the Seen This Map counter. Off by default, so a rule " +
+        "you wrote to be warned about something does not also become a list of it: tick this only " +
+        "on the rules you actually want tallied. The counter itself is switched on under Seen " +
+        "This Map Counter.")]
+    public ToggleNode CountInSeenPanel { get; set; } = new ToggleNode(false);
 
     [Menu("Remember Position",
         "Keep this rule's icon on the map after the monster drops out of range, at the spot it was " +
@@ -677,10 +648,10 @@ public class MetadataFilterSettings
 public class SeenPanelSettings
 {
     [Menu("Show Counter",
-        "Lists how many of each kind of thing your rules have matched since you entered the area, " +
-        "named by metadata path with the \"Metadata/Critters/\" or \"Metadata/Monsters/\" prefix " +
-        "removed. Only things a rule matched are counted, so it tallies what you asked to be shown " +
-        "rather than everything in the zone. Resets on area change.")]
+        "Lists how many of each kind of thing has been matched since you entered the area, named " +
+        "by metadata path with the \"Metadata/Critters/\" or \"Metadata/Monsters/\" prefix " +
+        "removed. Counts only the rules with Count In Seen This Map ticked, so nothing appears " +
+        "here until one of them has it. Resets on area change.")]
     public ToggleNode Show { get; set; } = new ToggleNode(false);
 
     [Menu("Toggle Key",
@@ -706,9 +677,6 @@ public class SeenPanelSettings
 
     [Menu("Background Colour")]
     public ColorNode BackgroundColor { get; set; } = new ColorNode(new Color(0, 0, 0, 180));
-
-    [Menu("Heading Colour")]
-    public ColorNode HeaderColor { get; set; } = new ColorNode(Color.Orange);
 
     [Menu("Name Colour")]
     public ColorNode TextColor { get; set; } = new ColorNode(Color.White);

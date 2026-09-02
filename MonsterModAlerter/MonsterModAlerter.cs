@@ -102,7 +102,6 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         Settings.ForceRefresh.OnPressed = ForceRefresh;
         Settings.SeenPanel.Reset.OnPressed = () => _resetSeenRequested = true;
-        Settings.AddCritterRule.OnPressed = () => Settings.AddCritterRuleRequested = true;
 
         // Registered with the HUD's own input handling, which is what makes PressedOnce work.
         // Re-registered on change, since the key it was told about is the one it watches.
@@ -163,14 +162,6 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             Settings.ResetToDefaults();
             ForceRefresh();
             LogMessage($"{Name}: all rules deleted and settings restored to defaults.");
-        }
-
-        if (Settings.AddCritterRuleRequested)
-        {
-            Settings.AddCritterRuleRequested = false;
-            Settings.Rules.Content.Add(AlertRule.Critters());
-            ForceRefresh();
-            LogMessage($"{Name}: added a rule marking every Metadata/Critters entity.");
         }
 
         if (_resetSeenRequested)
@@ -362,19 +353,27 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             if (match == null)
                 return false;
 
+            // Tallied when any of the rules that matched asked to be, whether or not it is the one
+            // that won the icon: the counter is asking what was here, not which rule drew it.
+            bool tally = match.Rule.CountInSeenPanel;
+
             if (allowMultiple)
             {
                 // Slots are assigned here so Render never has to group by entity: it just reads
                 // the position each icon was given.
                 for (var i = 0; i < collected.Count; i++)
+                {
                     found.Add(collected[i] with { Slot = i, SlotCount = collected.Count });
+                    tally |= collected[i].Rule.CountInSeenPanel;
+                }
             }
             else
             {
                 found.Add(match);
             }
 
-            RecordSeen(entity);
+            if (tally)
+                RecordSeen(entity);
 
             // The highest-priority match owns the remembered icon, whether or not the others are
             // also being drawn — one monster leaves one mark on the map.
@@ -897,31 +896,29 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         var rows = _seenRows;
 
-        var total = 0;
-        foreach (var row in rows)
-            total += row.Count;
+        // Nothing tallied yet draws nothing at all: the list is the whole panel, so an empty one
+        // has nothing to say and no reason to sit on the screen.
+        if (rows.Count == 0)
+            return;
 
         using (Graphics.SetTextScale(panel.TextScale.Value))
         {
             var shown = Math.Min(rows.Count, panel.MaxRows.Value);
-            var heading = rows.Count == 0
-                ? "Seen this map: nothing yet"
-                : $"Seen this map: {total} in {rows.Count} kind{(rows.Count == 1 ? "" : "s")}";
-
-            var headingSize = Graphics.MeasureText(heading);
-            var lineHeight = headingSize.Y;
 
             // Names and counts are measured before anything is drawn, because the count column is
             // right-aligned to the widest row rather than to a guessed width.
-            var width = headingSize.X;
+            var width = 0f;
+            var lineHeight = 0f;
             const float columnGap = 20f;
 
             for (var i = 0; i < shown; i++)
             {
                 var row = rows[i];
-                var rowWidth = Graphics.MeasureText(row.Name).X + columnGap +
-                               Graphics.MeasureText(row.Count.ToString()).X;
-                width = Math.Max(width, rowWidth);
+                var nameSize = Graphics.MeasureText(row.Name);
+                var countSize = Graphics.MeasureText(row.Count.ToString());
+
+                width = Math.Max(width, nameSize.X + columnGap + countSize.X);
+                lineHeight = Math.Max(lineHeight, Math.Max(nameSize.Y, countSize.Y));
             }
 
             var truncated = rows.Count - shown;
@@ -929,8 +926,9 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
             if (footer != null)
             {
-                width = Math.Max(width, Graphics.MeasureText(footer).X);
-                lineHeight = Math.Max(lineHeight, Graphics.MeasureText(footer).Y);
+                var footerSize = Graphics.MeasureText(footer);
+                width = Math.Max(width, footerSize.X);
+                lineHeight = Math.Max(lineHeight, footerSize.Y);
             }
 
             float x = panel.X.Value;
@@ -939,14 +937,11 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             if (panel.DrawBackground)
             {
                 const float pad = 6f;
-                var lines = 1 + shown + (footer != null ? 1 : 0);
+                var lines = shown + (footer != null ? 1 : 0);
                 Graphics.DrawBox(
                     new RectangleF(x - pad, y - pad, width + pad * 2, lines * lineHeight + pad * 2),
                     panel.BackgroundColor.Value);
             }
-
-            Graphics.DrawText(heading, new Vector2(x, y), panel.HeaderColor.Value);
-            y += lineHeight;
 
             for (var i = 0; i < shown; i++)
             {
