@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using ExileCore;
 using ExileCore.Shared.Interfaces;
 using ImGuiNET;
+using Newtonsoft.Json;
 
 namespace MonsterModAlerter;
 
@@ -16,6 +17,10 @@ namespace MonsterModAlerter;
 /// A whole row - handle, checkbox and title - is a drop target, not the title alone: it is drawn as an ImGui group,
 /// which a drop target can be attached to. Dropping a group on a group's row moves it there; a rule on a rule's row
 /// moves it there; a rule on a group's row moves it to the end of that group, open or not.
+///
+/// Duplicate puts a copy straight after the original, made as the HUD saves and loads settings (CopyOf), so it carries
+/// every saved setting. A copied group's name gets " (copy)" so the two can be told apart; a rule has no name of its
+/// own to mark.
 /// </summary>
 internal static class AlertGroupsEditor
 {
@@ -52,9 +57,12 @@ internal static class AlertGroupsEditor
 
     private static void DrawGroups(List<AlertGroup> groups)
     {
-        // Moves and deletions are applied after the loop, never inside it, so the list is not changed while drawn.
+        // Moves, copies and deletions are applied after the loop, never inside it, so the list is not changed while
+        // drawn.
         (int From, int To)? groupMove = null;
         (RulePosition From, RulePosition To)? ruleMove = null;
+        int? groupToDuplicate = null;
+        RulePosition? ruleToDuplicate = null;
         int? groupToDelete = null;
         RulePosition? ruleToDelete = null;
 
@@ -112,6 +120,11 @@ internal static class AlertGroupsEditor
 
                         DrawSettingsOf(rule);
 
+                        if (ImGui.Button("Duplicate rule"))
+                            ruleToDuplicate = new RulePosition(g, r);
+
+                        ImGui.SameLine();
+
                         if (CtrlButton($"Delete rule: {rule.DisplayName}###deleteRule"))
                             ruleToDelete = new RulePosition(g, r);
 
@@ -123,6 +136,11 @@ internal static class AlertGroupsEditor
 
                 if (ImGui.Button("Add rule"))
                     rules.Add(new AlertRule());
+
+                ImGui.SameLine();
+
+                if (ImGui.Button("Duplicate group"))
+                    groupToDuplicate = g;
 
                 ImGui.SameLine();
 
@@ -144,12 +162,36 @@ internal static class AlertGroupsEditor
         if (ruleMove is { } rm)
             MoveRule(groups, rm.From, rm.To);
 
+        if (ruleToDuplicate is { } rc && rc.Group < groups.Count && rc.Rule < groups[rc.Group].Rules.Content.Count)
+        {
+            var rules = groups[rc.Group].Rules.Content;
+            rules.Insert(rc.Rule + 1, CopyOf(rules[rc.Rule]));
+        }
+
+        if (groupToDuplicate is { } gc && gc < groups.Count)
+        {
+            var copy = CopyOf(groups[gc]);
+
+            if (!string.IsNullOrWhiteSpace(copy.Name?.Value))
+                copy.Name.Value += " (copy)";
+
+            groups.Insert(gc + 1, copy);
+        }
+
         if (ruleToDelete is { } rd && rd.Group < groups.Count && rd.Rule < groups[rd.Group].Rules.Content.Count)
             groups[rd.Group].Rules.Content.RemoveAt(rd.Rule);
 
         if (groupToDelete is { } gd && gd < groups.Count)
             groups.RemoveAt(gd);
     }
+
+    /// <summary>
+    /// A copy of a group or rule, written and read back as the HUD saves and loads settings (SettingsContainer's JSON
+    /// settings), so it holds every saved setting and shares no node with the original.
+    /// </summary>
+    private static T CopyOf<T>(T original) =>
+        JsonConvert.DeserializeObject<T>(
+            JsonConvert.SerializeObject(original, SettingsContainer.jsonSettings), SettingsContainer.jsonSettings);
 
     /// <summary>The "=" handle a group or rule is dragged by, showing its name while dragged.</summary>
     private static void DragHandle<T>(string payloadType, T payload, string name) where T : unmanaged
