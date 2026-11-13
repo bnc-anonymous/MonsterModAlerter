@@ -15,65 +15,76 @@ using Vector2N = System.Numerics.Vector2;
 namespace MonsterModAlerter;
 
 /// <summary>
-/// One watched mod/buff term plus how it should be presented. Rendered by the HUD as an
-/// "Add Item" list, so each term gets its own icon, size, colour and sound.
+/// One kind of monster or modifier to mark, and how to present it. Shown by the HUD as an entry in the Alert rules
+/// list, so each rule has its own icon, sizes, count and sound.
 /// </summary>
 [Submenu(CollapsedByDefault = true)]
 public class AlertRule
 {
-    public AlertRule()
-    {
-        // Wired here (not in an initializer) so it is re-attached after JSON deserialization.
-        IconPicker = new IconPickerNode(this);
-    }
+    // Made here rather than in an initializer, so it is attached again after JSON deserialization.
+    public AlertRule() => IconPicker = new IconPickerNode(this);
 
-    public static AlertRule Default() => new AlertRule
+    /// <summary>The rule a new install starts with, and the one a reset leaves.</summary>
+    public static AlertRule Example() => new()
     {
         SearchTerm = new TextNode("TormentHauntedMonsterThief"),
         Icon = MapIconsIndex.CorpseTypeUndead,
     };
 
     [Menu("Enabled")]
-    public ToggleNode Enabled { get; set; } = new ToggleNode(true);
+    public ToggleNode Enabled { get; set; } = new(true);
 
-    [Menu("Search Term",
-        "Case-insensitive substring match against mod and buff names. Comma-separated terms are " +
-        "ANDed: \"mod1,mod2\" only matches a monster carrying BOTH, so you can flag dangerous " +
-        "combinations that are harmless individually. Use a separate rule for either/or. " +
-        "Leave blank to match on the monster filter alone, i.e. flag a kind of monster whatever " +
-        "modifiers it happens to have.")]
-    public TextNode SearchTerm { get; set; } = new TextNode("");
+    /// <summary>
+    /// Matched as a case-insensitive substring of the monster's mod and buff names (Scan's Search mods and Search
+    /// buffs). Comma-separated terms are ANDed: "mod1,mod2" matches only a monster carrying both, which flags
+    /// combinations that are harmless alone; either/or is two rules. Blank leaves the path filter alone to decide,
+    /// which marks a kind of monster whatever its modifiers.
+    /// </summary>
+    [Menu("Search term",
+        "Matched against mod and buff names, ignoring case. Comma-separated\n" +
+        "terms must all match. Blank: the path filter alone decides.")]
+    public TextNode SearchTerm { get; set; } = new("");
 
-    [Menu("Wildcards (regex)",
-        "Treat each search term as a .NET regular expression instead of plain text, so " +
-        "\"MonsterMod.*Touched\" matches any Touched variant. Commas still separate terms and are " +
-        "still ANDed, so a comma cannot be used inside a pattern. Matching stays case-insensitive " +
-        "and unanchored, i.e. the pattern may match anywhere in the mod name. A pattern that will " +
-        "not compile disarms the rule rather than matching everything, and says so in its label.")]
-    public ToggleNode UseRegex { get; set; } = new ToggleNode(false);
+    /// <summary>
+    /// Each term is a .NET regular expression instead of plain text, so "MonsterMod.*Touched" matches every Touched
+    /// variant. Commas still separate terms, so a pattern cannot contain one. Case-insensitive and unanchored, as plain
+    /// terms are. A pattern that does not compile disarms the rule rather than matching everything, and the rule's
+    /// entry in the list says [BAD REGEX].
+    /// </summary>
+    [Menu("Use regex", "Each term is a .NET regular expression, unanchored.\nCommas still separate terms.")]
+    public ToggleNode UseRegex { get; set; } = new(false);
 
-    [Menu("Match Any Entity",
-        "Off (default): this rule only looks at hostile monsters, and both rarity filters apply. " +
-        "On: it is tested against every entity the game has loaded - critters, chests, doors, " +
-        "shrines, objects - with the hostile and rarity checks skipped, since those are monster " +
-        "concepts and would throw all of these away. The entity's metadata path is searched as " +
-        "well as any mods and buffs it has, because most non-monster entities carry neither, so " +
-        "a search term of \"Metadata/Critters\" flags every critter. The Monster Filter below " +
-        "matches the same path, so either will do.")]
-    public ToggleNode AnyEntity { get; set; } = new ToggleNode(false);
+    /// <summary>
+    /// Off: the rule sees only hostile monsters, and both rarity filters apply. On: it is tested against every loaded
+    /// entity with a position - critters, chests, doors, shrines - with the hostile and rarity checks skipped, and its
+    /// terms also search the metadata path, since most such entities carry neither mods nor buffs. "Metadata/Critters"
+    /// then marks every critter.
+    /// </summary>
+    [Menu("Match any entity",
+        "Test every loaded entity, not only hostile monsters, and search\n" +
+        "its metadata path too. Rarity filters do not apply.")]
+    public ToggleNode AnyEntity { get; set; } = new(false);
 
-    [Menu("Monster Filter")]
-    public MetadataFilterSettings Metadata { get; set; } = new MetadataFilterSettings();
+    [Menu("Path filter")]
+    public PathFilterSettings PathFilter { get; set; } = new();
 
-    [Menu("Label", "Optional text drawn in the world. Leave blank to show the matched mod name.")]
-    public TextNode Label { get; set; } = new TextNode("");
-
-    [Menu("Rarity Filter",
-        "Narrows the global filter for this rule only — a monster must pass both. New rules start " +
-        "at Rare + Unique; tick Normal/Magic here to widen this rule (the global filter still applies).")]
+    /// <summary>Intersects with the Scan section's rarity filter: a monster must pass both.</summary>
+    [Menu("Rarity filter", "Narrows the rarity filter under Scan for this rule.")]
     public RarityFilterSettings Rarity { get; set; } = RarityFilterSettings.RareAndUnique();
 
-    /// <summary>Serialized by name so the settings JSON stays readable and survives enum reordering.</summary>
+    /// <summary>
+    /// Higher is drawn on top among this plugin's icons. With Allow multiple matches off, only the highest-priority
+    /// rule matching a monster is shown; either way it owns the remembered position, the count and the sound.
+    /// </summary>
+    [Menu("Priority",
+        "Higher draws on top. With Allow multiple matches off, only the\n" +
+        "highest-priority rule matching a monster is shown.")]
+    public RangeNode<int> Priority { get; set; } = new(0, -100, 100);
+
+    [JsonIgnore]
+    public CustomNode IconGroup { get; set; } = Section.Of("Icon");
+
+    /// <summary>Saved by name, so the settings file stays readable and survives the enum being reordered.</summary>
     [JsonConverter(typeof(StringEnumConverter))]
     public MapIconsIndex Icon = MapIconsIndex.CorpseTypeUndead;
 
@@ -81,129 +92,151 @@ public class AlertRule
     [JsonIgnore]
     public IconPickerNode IconPicker { get; set; }
 
-    [Menu("Minimap Icon Size", "Size of this rule's icon on the minimap / large map, in pixels.")]
-    public RangeNode<int> IconSize { get; set; } = new RangeNode<int>(32, 4, 100);
-
-    [Menu("World Icon Size", "Size of this rule's icon drawn over the monster in the world, in pixels.")]
-    public RangeNode<int> WorldIconSize { get; set; } = new RangeNode<int>(64, 4, 256);
-
     [Menu("Tint")]
-    public ColorNode Tint { get; set; } = new ColorNode(Color.White);
-
-    [Menu("Priority", "Draw order among this plugin's own icons. Higher = on top.")]
-    public RangeNode<int> Priority { get; set; } = new RangeNode<int>(0, -100, 100);
-
-    [Menu("Show On Minimap")]
-    public ToggleNode ShowOnMinimap { get; set; } = new ToggleNode(true);
-
-    [Menu("Show In World")]
-    public ToggleNode ShowInWorld { get; set; } = new ToggleNode(true);
-
-    [Menu("Count In Seen This Map",
-        "Include what this rule matches in the Seen This Map counter. Off by default, so a rule " +
-        "you wrote to be warned about something does not also become a list of it: tick this only " +
-        "on the rules you actually want tallied. The counter itself is switched on under Seen " +
-        "This Map Counter.")]
-    public ToggleNode CountInSeenPanel { get; set; } = new ToggleNode(false);
-
-    [Menu("Remember Position",
-        "Keep this rule's icon on the map after the monster drops out of range, at the spot it was " +
-        "last seen, so you can tell at a glance where the ones you have not dealt with are. " +
-        "Drawn exactly like a live one, so bear in mind it is a last known position rather than " +
-        "proof the monster is still there. Cleared when you change area, and dropped as soon as " +
-        "the monster is seen dead.")]
-    public ToggleNode RememberPosition { get; set; } = new ToggleNode(false);
-
-    [Menu("Show Rare Modifier Count",
-        "Draw how many modifiers this monster has on the minimap, as a bare number like \"12\". " +
-        "Counts distinct rolled rare-monster affixes only — the MonsterMod entries in " +
-        "ObjectMagicProperties.Mods, ignoring repeats, since the game lists some of them more " +
-        "than once — so the number matches what the monster's own tooltip shows. " +
-        "Buffs are excluded too: they come and go with auras and charges and would make it " +
-        "flicker. Turn on Debug Overlay to see the full list and which entries were counted. " +
-        "Appearance is under Mod Count Display.")]
-    public ToggleNode ShowModCount { get; set; } = new ToggleNode(false);
-
-    [Menu("Count Search Term Matches Instead",
-        "Show how many of the monster's modifiers match this rule's search term, rather than how " +
-        "many rare affixes it has. With \"MonsterMod.*Touched\" and wildcards on, a monster with " +
-        "Fire Touched and Cold Touched reads 2 rather than its full affix count. Distinct entries " +
-        "only, and buffs count too if Match Buffs is on, since those are what the term was tested " +
-        "against. Ignored on a rule with no search term, which falls back to the rare count.")]
-    public ToggleNode CountSearchMatches { get; set; } = new ToggleNode(false);
-
-    [Menu("Count Minimum",
-        "Below this count the rule does not fire at all: no icon, no number, no sound. Applies " +
-        "whether or not the number itself is being shown, so it doubles as a filter — \"only flag " +
-        "monsters with at least this many\". Counts whichever number this rule is showing, rare " +
-        "affixes or search-term matches. 0 disables it.")]
-    public RangeNode<int> ModCountMinimum { get; set; } = new RangeNode<int>(0, 0, 50);
-
-    [Menu("Count Colour")]
-    public ColorNode ModCountColor { get; set; } = new ColorNode(Color.White);
-
-    [Menu("Play Sound")]
-    public ToggleNode PlaySound { get; set; } = new ToggleNode(true);
-
-    [Menu("Sound File", "Name (no extension) of a file in the HUD 'Sounds' folder. 'attention' is the spoken warning clip.")]
-    public TextNode SoundFile { get; set; } = new TextNode("attention");
-
-    private string _cachedTermSource;
-    private string[] _terms = Array.Empty<string>();
+    public ColorNode Tint { get; set; } = new(Color.White);
 
     /// <summary>
-    /// SearchTerm split on commas. All of these must be present on a monster for the rule to fire.
-    /// Re-split only when the text actually changes, since this is read on every scan.
+    /// On the minimap and the large map; Display's Draw only on large map can narrow that to the large map.
+    /// </summary>
+    [Menu("Show on map")]
+    public ToggleNode ShowOnMap { get; set; } = new(true);
+
+    [Menu("Map icon size (px)")]
+    public RangeNode<int> MapIconSize { get; set; } = new(32, 4, 100);
+
+    /// <summary>Over the monster, with the World section's drawing on.</summary>
+    [Menu("Show in world")]
+    public ToggleNode ShowInWorld { get; set; } = new(true);
+
+    [Menu("World icon size (px)")]
+    public RangeNode<int> WorldIconSize { get; set; } = new(64, 4, 256);
+
+    /// <summary>
+    /// Drawn under the world icon when the World section's Draw label is on. Blank shows the matched name.
+    /// </summary>
+    [Menu("Label", "Drawn under the world icon with World > Draw label on.\nBlank: the matched name.")]
+    public TextNode Label { get; set; } = new("");
+
+    /// <summary>
+    /// Keeps the map icon, and the count, at the spot the monster was last seen after it leaves range. Drawn as a live
+    /// icon is, so it is a last known position rather than proof the monster is still there. Dropped when the monster
+    /// is seen dead, when the player comes within Forget radius and nothing is there, and on area change.
+    /// </summary>
+    [Menu("Remember position",
+        "Keep the map icon at the last seen spot after the monster leaves\n" +
+        "range, until it is seen dead, found gone, or the area changes.")]
+    public ToggleNode RememberPosition { get; set; } = new(false);
+
+    [JsonIgnore]
+    public CustomNode ModCountGroup { get; set; } = Section.Of("Mod count");
+
+    /// <summary>
+    /// Draws a number on the monster's map icon: by default how many rare modifiers it has - the distinct MonsterMod
+    /// entries of ObjectMagicProperties.Mods, since the game repeats some, so the number matches the monster's tooltip.
+    /// Buffs are not counted: they come and go with auras and charges and would make it flicker. The Debug section's
+    /// overlay lists the entries and which were counted. Drawn as the Mod count section says.
+    /// </summary>
+    [Menu("Show mod count", "The monster's rare modifiers, each counted once.")]
+    public ToggleNode ShowModCount { get; set; } = new(false);
+
+    /// <summary>
+    /// Counts the distinct mod and buff names the search term matches instead: with "MonsterMod.*Touched" as a regex, a
+    /// monster with Fire Touched and Cold Touched reads 2. Buffs count only with Search buffs on. Ignored without a
+    /// search term, which counts rare modifiers.
+    /// </summary>
+    [Menu("Count search matches", "Count the mods and buffs the search term matches instead.")]
+    public ToggleNode CountSearchMatches { get; set; } = new(false);
+
+    /// <summary>
+    /// Below this count the rule does not match at all - no icon, number, sound or remembered position - whether or not
+    /// the number is shown, so it doubles as a filter. Applies to whichever number the rule counts. 0 is off.
+    /// </summary>
+    [Menu("Mod count minimum", "Below this the rule does not match at all. 0 = off.")]
+    public RangeNode<int> ModCountMinimum { get; set; } = new(0, 0, 50);
+
+    [Menu("Mod count colour")]
+    public ColorNode ModCountColour { get; set; } = new(Color.White);
+
+    [JsonIgnore]
+    public CustomNode SeenTallyGroup { get; set; } = Section.Of("Seen tally");
+
+    /// <summary>
+    /// Adds what this rule matches to the seen tally. Off by default, so a rule written to warn about something does
+    /// not also become a list of it. An entity several rules match is counted once.
+    /// </summary>
+    [Menu("Add to seen tally")]
+    public ToggleNode AddToSeenTally { get; set; } = new(false);
+
+    [JsonIgnore]
+    public CustomNode SoundGroup { get; set; } = Section.Of("Sound");
+
+    [Menu("Play sound")]
+    public ToggleNode PlaySound { get; set; } = new(true);
+
+    /// <summary>
+    /// A file in the HUD's Sounds folder, named without its extension; "attention" is the spoken warning.
+    /// </summary>
+    [Menu("Sound file", "A file in the HUD's Sounds folder, without its extension.")]
+    public TextNode SoundFile { get; set; } = new("attention");
+
+    private string _termSource;
+    private string[] _terms = [];
+
+    /// <summary>
+    /// SearchTerm split on commas. All of these must be present on a monster for the rule to match. Re-split only when
+    /// the text changes, since this is read on every scan.
     /// </summary>
     [JsonIgnore]
     public string[] Terms
     {
         get
         {
-            var raw = SearchTerm?.Value ?? string.Empty;
-            if (!string.Equals(raw, _cachedTermSource, StringComparison.Ordinal))
+            var source = SearchTerm?.Value ?? string.Empty;
+            if (!string.Equals(source, _termSource, StringComparison.Ordinal))
             {
-                _cachedTermSource = raw;
-                _terms = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                _patterns = null;                       // rebuilt lazily against the new terms
-                _cachedPatternSource = null;
+                _termSource = source;
+                _terms = source.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                // Rebuilt lazily against the new terms.
+                _patterns = null;
+                _patternSource = null;
             }
 
             return _terms;
         }
     }
 
-    private string _cachedPatternSource;
-    private bool _cachedPatternRegex;
+    private string _patternSource;
+    private bool _patternsAreRegex;
     private Regex[] _patterns;
     private string _patternError;
 
     /// <summary>
-    /// <see cref="Terms"/> compiled as regexes, or null when this rule matches by plain substring.
-    /// Compiled once per edit rather than per scan, since a scan tests every term against every
-    /// mod on every monster.
+    /// Terms compiled as regexes, or empty when this rule matches by plain substring. Compiled once per edit rather
+    /// than per scan, since a scan tests every term against every mod on every monster.
     /// </summary>
     [JsonIgnore]
     public Regex[] Patterns
     {
         get
         {
-            var terms = Terms;                          // may invalidate the cache below
+            // May invalidate the cache below.
+            var terms = Terms;
             var useRegex = UseRegex?.Value == true;
 
-            if (_patterns != null && _cachedPatternRegex == useRegex &&
-                string.Equals(_cachedPatternSource, _cachedTermSource, StringComparison.Ordinal))
+            if (_patterns != null && _patternsAreRegex == useRegex &&
+                string.Equals(_patternSource, _termSource, StringComparison.Ordinal))
             {
                 return _patterns;
             }
 
-            _cachedPatternSource = _cachedTermSource;
-            _cachedPatternRegex = useRegex;
+            _patternSource = _termSource;
+            _patternsAreRegex = useRegex;
             _patternError = null;
 
             if (!useRegex)
             {
-                _patterns = Array.Empty<Regex>();
+                _patterns = [];
                 return _patterns;
             }
 
@@ -217,8 +250,8 @@ public class AlertRule
                 }
                 catch (ArgumentException e)
                 {
-                    // A bad pattern must not throw on the scan thread, and must not quietly match
-                    // everything either — the rule is disarmed and says so in its label.
+                    // A bad pattern must not throw on the scan, and must not quietly match everything either - the rule
+                    // is disarmed and says so in its entry.
                     _patternError = e.Message;
                     built.Clear();
                     break;
@@ -230,7 +263,7 @@ public class AlertRule
         }
     }
 
-    /// <summary>Why the pattern would not compile, or null when it is fine. Read after Patterns.</summary>
+    /// <summary>Why the pattern would not compile, or null when it is fine.</summary>
     [JsonIgnore]
     public string PatternError
     {
@@ -241,22 +274,24 @@ public class AlertRule
         }
     }
 
-    // Trailing "###" keeps ImGui's element id stable while the visible label changes as you type.
+    /// <summary>
+    /// The rule's entry in the list. The trailing ### keeps ImGui's id stable while the text changes.
+    /// </summary>
     public override string ToString()
     {
-        // A rule with no term is valid when the monster filter carries it, so name that instead of
-        // reporting the rule as incomplete.
+        // A rule with no term is valid when the path filter carries it, so name that instead of reporting the rule as
+        // incomplete.
         var term = string.IsNullOrWhiteSpace(SearchTerm?.Value)
-            ? (Metadata?.IsBlank == false ? Metadata.Describe() : "<no term>")
+            ? (PathFilter?.IsBlank == false ? PathFilter.Describe() : "<no term>")
             : SearchTerm.Value;
 
-        // A rule that cannot compile its pattern matches nothing, which is indistinguishable from
-        // "no such monster here" unless it is said out loud.
+        // A rule that cannot compile its pattern matches nothing, which is indistinguishable from "no such monster
+        // here" unless it is said.
         if (PatternError != null)
             term = $"{term}  [BAD REGEX]";
 
-        // A rule that is not restricted to monsters behaves differently enough - no rarity filter,
-        // and it searches the metadata path - that the list should say so without opening it.
+        // A rule not restricted to monsters behaves differently enough - no rarity filter, and it searches the metadata
+        // path - that the list says so without opening it.
         if (AnyEntity?.Value == true)
             term = $"[any] {term}";
 
@@ -264,8 +299,8 @@ public class AlertRule
     }
 
     /// <summary>
-    /// Uses ExileCore's own IconButton/IconPickerWindow helpers — the same ones MinimapIcons uses —
-    /// so the grid layout, filtering and sizing match the rest of the HUD.
+    /// The icon button and picker. Uses ExileCore's own IconButton and IconPickerWindow, the ones MinimapIcons uses, so
+    /// the grid, filtering and sizing match the rest of the HUD.
     /// </summary>
     [Submenu(RenderMethod = nameof(Render))]
     public class IconPickerNode(AlertRule rule)

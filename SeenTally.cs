@@ -74,7 +74,7 @@ internal sealed class SeenTally
         _rowsOutOfDate = false;
     }
 
-    public void Draw(Graphics graphics, SeenPanelSettings panel)
+    public void Draw(Graphics graphics, SeenTallySettings panel)
     {
         if (!panel.Show)
             return;
@@ -125,7 +125,7 @@ internal sealed class SeenTally
                 var lines = shown + (footer != null ? 1 : 0);
                 graphics.DrawBox(
                     new RectangleF(x - pad, y - pad, width + pad * 2, lines * lineHeight + pad * 2),
-                    panel.BackgroundColor.Value);
+                    panel.BackgroundColour.Value);
             }
 
             for (var i = 0; i < shown; i++)
@@ -133,15 +133,15 @@ internal sealed class SeenTally
                 var row = rows[i];
                 var count = row.Count.ToString();
 
-                graphics.DrawText(row.Name, new Vector2(x, y), panel.TextColor.Value);
+                graphics.DrawText(row.Name, new Vector2(x, y), panel.NameColour.Value);
                 graphics.DrawText(count,
-                    new Vector2(x + width - graphics.MeasureText(count).X, y), panel.CountColor.Value);
+                    new Vector2(x + width - graphics.MeasureText(count).X, y), panel.CountColour.Value);
 
                 y += lineHeight;
             }
 
             if (footer != null)
-                graphics.DrawText(footer, new Vector2(x, y), panel.TextColor.Value);
+                graphics.DrawText(footer, new Vector2(x, y), panel.NameColour.Value);
         }
     }
 }

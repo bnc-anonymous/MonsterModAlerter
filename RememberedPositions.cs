@@ -4,7 +4,7 @@ using System.Numerics;
 namespace MonsterModAlerter;
 
 /// <summary>
-/// Where an entity was when it was last in range, for rules with Remember Position on. Holds the grid position rather
+/// Where an entity was when it was last in range, for rules with Remember position on. Holds the grid position rather
 /// than the Entity: the entity is gone from the list by the time this is drawn, and reading a stale one is not safe.
 /// </summary>
 internal sealed record RememberedPosition(uint Id, Vector2 GridPos, AlertRule Rule, int ModCount);

@@ -10,7 +10,7 @@ using RectangleF = SharpDX.RectangleF;
 namespace MonsterModAlerter;
 
 /// <summary>
-/// The Debug Overlay: what the scan and the draw path decided this frame, written top-left, so an invisible icon can be
+/// The debug overlay: what the scan and the draw path decided this frame, written top-left, so an invisible icon can be
 /// told apart from a wrongly-sized one without guessing.
 /// </summary>
 internal sealed class DebugOverlay
@@ -60,7 +60,7 @@ internal sealed class DebugOverlay
                 nearest = Math.Min(nearest, (float)Math.Sqrt(dx * dx + dy * dy));
             }
 
-            var radius = settings.ForgetRadius.Value;
+            var radius = settings.Scan.ForgetRadius.Value;
             WriteLine($"  nearest stale icon {nearest:0} grid away, forget radius {radius} - " +
                       (nearest <= radius ? "inside, so it would have been dropped" : "walk closer to clear it"),
                 nearest <= radius ? Color.Orange : Color.White);
@@ -68,10 +68,10 @@ internal sealed class DebugOverlay
 
         WriteLine($"smallMap={ingameUi.Map.SmallMiniMap.IsVisibleLocal}  " +
                   $"largeMap={ingameUi.Map.LargeMap.IsVisibleLocal}  " +
-                  $"minimapVisible={minimapVisible}  onlyLarge={settings.DrawOnlyOnLargeMap.Value}",
+                  $"minimapVisible={minimapVisible}  onlyLarge={settings.Display.DrawOnlyOnLargeMap.Value}",
             minimapVisible ? Color.LightGreen : Color.Orange);
         WriteLine($"region=({region.Left:0},{region.Top:0})-({region.Right:0},{region.Bottom:0})  " +
-                  $"limit={settings.LimitDrawRegion.Value}", Color.White);
+                  $"limit={settings.Display.LimitDrawRegion.Value}", Color.White);
 
         // Only for a rule that is actually counting, and only the first such match: printing every mod on every match
         // would bury the rest of the overlay.
@@ -83,10 +83,11 @@ internal sealed class DebugOverlay
             var point = _graphics.GridToMap(gridPos, gridPos);
             var inRegion = region.Contains(point.X, point.Y);
 
-            WriteLine($"  '{match.Rule.SearchTerm.Value}' icon={match.Rule.Icon} mapSize={match.Rule.IconSize.Value} " +
-                      $"worldSize={match.Rule.WorldIconSize.Value} showMap={match.Rule.ShowOnMinimap.Value} " +
+            WriteLine($"  '{match.Rule.SearchTerm.Value}' icon={match.Rule.Icon} " +
+                      $"mapSize={match.Rule.MapIconSize.Value} " +
+                      $"worldSize={match.Rule.WorldIconSize.Value} showMap={match.Rule.ShowOnMap.Value} " +
                       $"mapPos=({point.X:0},{point.Y:0}) inRegion={inRegion}",
-                inRegion && minimapVisible && match.Rule.ShowOnMinimap ? Color.LightGreen : Color.Orange);
+                inRegion && minimapVisible && match.Rule.ShowOnMap ? Color.LightGreen : Color.Orange);
 
             if (ReferenceEquals(match, firstShowingModCount))
                 WriteModBreakdown(match);

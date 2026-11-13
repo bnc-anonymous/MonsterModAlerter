@@ -51,11 +51,11 @@ internal sealed class EntityScan
 
     public void Run(GameController gameController, MonsterModAlerterSettings settings)
     {
-        // A rule needs something to go on, but either half will do: a mod term, or a monster filter naming (or
-        // excluding) a family. A rule with neither would match every monster.
+        // A rule needs something to go on, but either half will do: a mod term, or a path filter naming (or excluding)
+        // a family. A rule with neither would match every monster.
         var rules = settings.Rules?.Content?
             .Where(r => r is { Enabled.Value: true } &&
-                        (!string.IsNullOrWhiteSpace(r.SearchTerm?.Value) || r.Metadata?.IsBlank == false))
+                        (!string.IsNullOrWhiteSpace(r.SearchTerm?.Value) || r.PathFilter?.IsBlank == false))
             .ToArray() ?? [];
 
         if (rules.Length == 0)
@@ -66,10 +66,12 @@ internal sealed class EntityScan
 
         var matches = new List<RuleMatch>();
 
-        var matcher = new RuleMatcher(rules, settings.CheckMods, settings.CheckBuffs, settings.AllowMultipleMatches);
+        var scanSettings = settings.Scan;
+        var matcher = new RuleMatcher(
+            rules, scanSettings.SearchMods, scanSettings.SearchBuffs, scanSettings.AllowMultipleMatches);
 
-        var maxDistance = settings.MaxDistance.Value;
-        var allowMultipleMatches = settings.AllowMultipleMatches.Value;
+        var maxDistance = scanSettings.MaxDistance.Value;
+        var allowMultipleMatches = scanSettings.AllowMultipleMatches.Value;
 
         // Whether anything is asking to see past the monster list at all. When nothing is, the second walk below never
         // happens.
@@ -135,7 +137,7 @@ internal sealed class EntityScan
         {
             // A list changed during its walk. The scan is abandoned and the last one stands: a part-walked list leaves
             // entities out of loadedIds, and their remembered positions near the player would be forgotten. The next
-            // scan is one Scan Interval away.
+            // scan is one scan interval away.
             return;
         }
 
@@ -144,7 +146,7 @@ internal sealed class EntityScan
         if (loadedIds != null &&
             Safe.Read(gameController, static g => g.Player?.GridPosNum, null) is { } playerGridPos)
         {
-            _remembered.ForgetAbsentNear(playerGridPos, settings.ForgetRadius.Value, loadedIds);
+            _remembered.ForgetAbsentNear(playerGridPos, scanSettings.ForgetRadius.Value, loadedIds);
         }
 
         // Ascending priority so the highest-priority icon is drawn last, i.e. on top.
@@ -159,7 +161,7 @@ internal sealed class EntityScan
         {
             offeredIds?.Add(entity.Id);
 
-            // Non-hostile things in this list are still offered to Match Any Entity rules - they are only disqualified
+            // Non-hostile things in this list are still offered to Match any entity rules - they are only disqualified
             // from being a monster, which is what those rules are for.
             var hostile = entity.IsHostile;
 
@@ -182,7 +184,7 @@ internal sealed class EntityScan
             // Global filter - the cheap gate that applies to every monster-only alert rule. Rarity is a monster's own
             // property, so it does not gate the rules that are not asking for one; those would be thrown away wholesale
             // by a filter set to Rare + Unique.
-            var monsterOk = hostile && settings.Rarity.Allows(entity.Rarity);
+            var monsterOk = hostile && scanSettings.Rarity.Allows(entity.Rarity);
 
             if (!monsterOk && !anyEntityRules)
                 return;
@@ -230,7 +232,7 @@ internal sealed class EntityScan
 
             // Tallied when any of the rules that matched asked to be, whether or not it is the one that won the icon:
             // the tally is asking what was here, not which rule drew it.
-            bool tally = best.Rule.CountInSeenPanel;
+            bool tally = best.Rule.AddToSeenTally;
 
             if (allowMultipleMatches)
             {
@@ -241,7 +243,7 @@ internal sealed class EntityScan
                 for (var i = 0; i < matchesOfEntity.Count; i++)
                 {
                     matches.Add(matchesOfEntity[i] with { Slot = i, SlotCount = matchesOfEntity.Count });
-                    tally |= matchesOfEntity[i].Rule.CountInSeenPanel;
+                    tally |= matchesOfEntity[i].Rule.AddToSeenTally;
                 }
             }
             else

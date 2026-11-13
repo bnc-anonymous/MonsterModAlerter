@@ -8,7 +8,7 @@ namespace MonsterModAlerter;
 
 /// <summary>
 /// The alert sound: at most one per cooldown, for the highest-priority match that has not been announced yet, or for
-/// any match while Loop Sound While Monster Alive is on.
+/// any match while Loop while alive is on.
 /// </summary>
 internal sealed class AlertSound
 {

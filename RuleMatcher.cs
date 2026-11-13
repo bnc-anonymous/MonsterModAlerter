@@ -19,8 +19,8 @@ internal sealed class RuleMatcher
     public const string RareModPrefix = "MonsterMod";
 
     private readonly AlertRule[] _rules;
-    private readonly bool _checkMods;
-    private readonly bool _checkBuffs;
+    private readonly bool _searchMods;
+    private readonly bool _searchBuffs;
     private readonly bool _allowMultipleMatches;
 
     /// <summary>The entity's mod and buff names, gathered once and tested against every rule.</summary>
@@ -31,17 +31,17 @@ internal sealed class RuleMatcher
 
     private readonly List<RuleMatch> _matchesOfEntity = new(4);
 
-    public RuleMatcher(AlertRule[] rules, bool checkMods, bool checkBuffs, bool allowMultipleMatches)
+    public RuleMatcher(AlertRule[] rules, bool searchMods, bool searchBuffs, bool allowMultipleMatches)
     {
         _rules = rules;
-        _checkMods = checkMods;
-        _checkBuffs = checkBuffs;
+        _searchMods = searchMods;
+        _searchBuffs = searchBuffs;
         _allowMultipleMatches = allowMultipleMatches;
     }
 
     /// <summary>
-    /// Every rule that matched the entity last passed to BestMatchOf, in rule order. Filled only when Allow Multiple
-    /// Matches is on.
+    /// Every rule that matched the entity last passed to BestMatchOf, in rule order. Filled only when Allow multiple
+    /// matches is on.
     /// </summary>
     public List<RuleMatch> MatchesOfEntity => _matchesOfEntity;
 
@@ -54,7 +54,7 @@ internal sealed class RuleMatcher
     /// Whether this entity qualifies as a monster this scan: hostile, alive and past the global rarity filter. Rules
     /// that were not asked to look further than monsters are skipped when it is false.
     /// </param>
-    /// <param name="anyOk">Whether Match Any Entity rules should be offered this entity.</param>
+    /// <param name="anyOk">Whether Match any entity rules should be offered this entity.</param>
     public RuleMatch BestMatchOf(Entity entity, bool monsterOk, bool anyOk, bool checkAlive)
     {
         _matchesOfEntity.Clear();
@@ -82,14 +82,14 @@ internal sealed class RuleMatcher
                 if (mod.StartsWith(RareModPrefix, StringComparison.OrdinalIgnoreCase) && _countedNames.Add(mod))
                     modCount++;
 
-                // Match Mods only governs what terms are tested against, never the count - searching stays over every
+                // Search mods only governs what terms are tested against, never the count - searching stays over every
                 // entry, since a term may well name one of the others.
-                if (_checkMods)
+                if (_searchMods)
                     _modAndBuffNames.Add(mod);
             }
         }
 
-        if (_checkBuffs && entity.TryGetComponent<Buffs>(out var buffs) && buffs?.BuffsList is { } buffList)
+        if (_searchBuffs && entity.TryGetComponent<Buffs>(out var buffs) && buffs?.BuffsList is { } buffList)
         {
             foreach (var buff in buffList)
             {
@@ -98,7 +98,7 @@ internal sealed class RuleMatcher
             }
         }
 
-        // No early-out on an empty name list: a rule can match on the monster filter alone, and such a rule must still
+        // No early-out on an empty name list: a rule can match on the path filter alone, and such a rule must still
         // fire for a monster carrying no mods or buffs at all.
         RuleMatch best = null;
         var entityId = entity.Id;
@@ -109,7 +109,7 @@ internal sealed class RuleMatcher
             var anyEntity = rule.AnyEntity?.Value == true;
 
             // Each rule sees the entities its own target covers: monster rules only the things that passed the monster
-            // gates, Match Any Entity rules everything else as well.
+            // gates, Match any entity rules everything else as well.
             if (anyEntity ? !anyOk : !monsterOk)
                 continue;
 
@@ -124,16 +124,16 @@ internal sealed class RuleMatcher
             if (!_allowMultipleMatches && best != null && rule.Priority.Value <= best.Rule.Priority.Value)
                 continue;
 
-            if (rule.Metadata?.Matches(path) == false)
+            if (rule.PathFilter?.Matches(path) == false)
                 continue;
 
             var terms = rule.Terms;
 
-            // No term means the monster filter alone decides, so what to label it with is the filter itself rather than
-            // a mod name.
+            // No term means the path filter alone decides, so what to label it with is the filter itself rather than a
+            // mod name.
             if (terms.Length == 0)
             {
-                if (rule.Metadata?.IsBlank != false)
+                if (rule.PathFilter?.IsBlank != false)
                     continue;
 
                 // With no term there is nothing to count matches of, so the minimum applies to the rare-affix count -
@@ -141,7 +141,7 @@ internal sealed class RuleMatcher
                 if (modCount < rule.ModCountMinimum.Value)
                     continue;
 
-                best = Keep(new RuleMatch(entity, entityId, rule, rule.Metadata.Describe(), modCount, checkAlive));
+                best = Keep(new RuleMatch(entity, entityId, rule, rule.PathFilter.Describe(), modCount, checkAlive));
                 continue;
             }
 
@@ -212,7 +212,7 @@ internal sealed class RuleMatcher
     /// single-term rule is exactly the number of hits.
     /// </summary>
     /// <param name="path">
-    /// The entity's metadata path when this rule searches it too (Match Any Entity), otherwise null. Counted like any
+    /// The entity's metadata path when this rule searches it too (Match any entity), otherwise null. Counted like any
     /// other value it matched, so a critter rule reads 1 rather than 0.
     /// </param>
     private int CountSearchMatches(AlertRule rule, string[] terms, Regex[] patterns, string path)

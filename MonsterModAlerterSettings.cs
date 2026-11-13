@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Windows.Forms;
 using ExileCore.Shared.Attributes;
 using ExileCore.Shared.Enums;
@@ -10,217 +9,457 @@ using ImGuiNET;
 using Newtonsoft.Json;
 using Color = SharpDX.Color;
 using Vector2N = System.Numerics.Vector2;
-using Vector4 = System.Numerics.Vector4;
 
 namespace MonsterModAlerter;
 
+/// <summary>
+/// A heading inside a settings section, drawn as `--- Icon ------------`. Declared as a CustomNode property because
+/// that is the only way to put something of a plugin's own into the attribute menu, and marked JsonIgnore because a
+/// heading has nothing to save. The menu draws properties in declaration order, so a heading is the property above the
+/// first setting it covers. The same pattern as AutoExpedition's and CraftUntilHighlighted's Section.
+/// </summary>
+internal static class Section
+{
+    public static CustomNode Of(string title) => new(() => ImGui.SeparatorText(title));
+}
+
 public class MonsterModAlerterSettings : ISettings
 {
-    public MonsterModAlerterSettings()
-    {
-        // Wired here (not in an initializer) so it survives JSON deserialization.
-        ResetEverything = new CustomNode { DrawDelegate = DrawResetControl };
-    }
+    public MonsterModAlerterSettings() => ResetAllUi = new CustomNode(DrawResetAll);
 
-    public ToggleNode Enable { get; set; } = new ToggleNode(true);
+    /// <summary>
+    /// The button at the top of the menu that puts every setting back to its default except Enable, and replaces the
+    /// alert rules with the example rule (SettingsReset). Clickable only while Ctrl is held, so a stray click cannot
+    /// undo the settings, as AutoExpedition's reset is; its tooltip says both, and shows while the button is disabled
+    /// too. Made in the constructor because it needs the settings it resets.
+    /// </summary>
+    [JsonIgnore]
+    public CustomNode ResetAllUi { get; set; }
 
-    [Menu("Alert Rules", "One rule per mod/buff you want to watch for. Each has its own icon, size and sound.")]
-    public ContentNode<AlertRule> Rules { get; set; } = new ContentNode<AlertRule>
+    /// <summary>
+    /// Raised by the reset button and answered by the next Tick. Not reset inline, because clearing the rule list while
+    /// ImGui is drawing it crashed.
+    /// </summary>
+    [JsonIgnore]
+    [IgnoreMenu]
+    public bool ResetRequested { get; set; }
+
+    public ToggleNode Enable { get; set; } = new(false);
+
+    /// <summary>
+    /// Which built-in changes this saved file has had applied. A saved file holds a value for every setting, so a
+    /// changed default never reaches it on its own; a change that must reach saved files raises this and adds a step to
+    /// MonsterModAlerter.ApplySettingsChanges. The same pattern as AutoExpedition's ConfigVersion.
+    /// </summary>
+    [IgnoreMenu]
+    public int ConfigVersion { get; set; }
+
+    /// <summary>
+    /// What to mark, one rule per kind of monster or modifier. Left empty here and seeded with the example rule by the
+    /// plugin: ExileCore deserializes settings without ObjectCreationHandling.Replace, so a list filled here would be
+    /// appended to on every load.
+    /// </summary>
+    [Menu("Alert rules")]
+    public ContentNode<AlertRule> Rules { get; set; } = new()
     {
         EnableControls = true,
         EnableItemCollapsing = true,
         ItemFactory = () => new AlertRule(),
         ItemFilter = (rule, search) => rule.SearchTerm.Value.Contains(search, StringComparison.OrdinalIgnoreCase),
-        // Deliberately empty: ExileCore deserializes settings without ObjectCreationHandling.Replace,
-        // so a pre-populated list would be appended to on every load. Seeded by the plugin instead.
         Content = new List<AlertRule>(),
     };
 
-    [Menu("Refresh Now",
-        "Forces an immediate re-scan and clears the 'already alerted' list, so matching monsters " +
-        "are re-detected and can announce again. Sizes, icons and colours apply live without this.")]
-    [JsonIgnore]
-    public ButtonNode ForceRefresh { get; set; } = new ButtonNode();
+    [Submenu(CollapsedByDefault = true)]
+    public ScanSettings Scan { get; set; } = new();
 
-    [Menu("Match Mods", "Check ObjectMagicProperties.Mods (internal names, e.g. TormentHauntedMonsterThief).")]
-    public ToggleNode CheckMods { get; set; } = new ToggleNode(true);
+    [Submenu(CollapsedByDefault = true)]
+    public DisplaySettings Display { get; set; } = new();
 
-    [Menu("Match Buffs", "Check the Buffs component (e.g. torment_cutthroat). Some monsters expose the mod only as a buff.")]
-    public ToggleNode CheckBuffs { get; set; } = new ToggleNode(true);
+    [Submenu(CollapsedByDefault = true)]
+    public WorldSettings World { get; set; } = new();
 
-    [Menu("Allow Multiple Matches",
-        "Draw every rule that matches a monster, not just the highest-priority one. The icons are " +
-        "stacked on the monster in priority order, so the highest-priority one sits on top and the " +
-        "others show through wherever it is transparent. Turn off for one icon per monster.")]
-    public ToggleNode AllowMultipleMatches { get; set; } = new ToggleNode(true);
+    [Menu("Mod count", "Drawn for the rules with Show mod count on.")]
+    [Submenu(CollapsedByDefault = true)]
+    public ModCountSettings ModCount { get; set; } = new();
 
-    [Menu("Global Rarity Filter",
-        "Applies to every rule. A monster must pass BOTH this and the rule's own rarity filter, " +
-        "so each rule can only narrow this further, never widen it.")]
-    public RarityFilterSettings Rarity { get; set; } = RarityFilterSettings.RareAndUnique();
+    [Menu("Seen tally", "Counts what the rules with Add to seen tally on have matched\nsince entering the area.")]
+    [Submenu(CollapsedByDefault = true)]
+    public SeenTallySettings SeenTally { get; set; } = new();
 
-    [Menu("Scan Interval (ms)", "How often the monster list is re-scanned. Drawing stays smooth regardless.")]
-    public RangeNode<int> ScanIntervalMs { get; set; } = new RangeNode<int>(250, 50, 2000);
+    [Submenu(CollapsedByDefault = true)]
+    public SoundSettings Sound { get; set; } = new();
 
-    [Menu("Max Distance", "Ignore monsters further than this from the player. 0 = no limit.")]
-    public RangeNode<int> MaxDistance { get; set; } = new RangeNode<int>(0, 0, 5000);
+    [Submenu(CollapsedByDefault = true)]
+    public DebugSettings Debug { get; set; } = new();
 
-    [Menu("Render Order",
-        "Controls draw order against OTHER ExileAPI plugins. Higher = drawn later = on top. " +
-        "Read once when the HUD loads the plugin, so changing it needs a HUD restart.")]
-    public RangeNode<int> RenderOrder { get; set; } = new RangeNode<int>(5000, -1000, 100000);
-
-    [Menu("Mod Count Display",
-        "Appearance of the modifier-count numbers. Turn them on per rule, under Alert Rules.")]
-    public ModCountSettings ModCount { get; set; } = new ModCountSettings();
-
-    [Menu("Seen This Map Counter",
-        "On-screen tally of everything your rules have matched since you entered the area.")]
-    public SeenPanelSettings SeenPanel { get; set; } = new SeenPanelSettings();
-
-    [Menu("World Overlay")]
-    public WorldDrawSettings World { get; set; } = new WorldDrawSettings();
-
-    [Menu("Sound Alert")]
-    public SoundSettings Sound { get; set; } = new SoundSettings();
-
-    [Menu("Draw Only On Large Map", "Restrict minimap icons to the open map (Tab) only.")]
-    public ToggleNode DrawOnlyOnLargeMap { get; set; } = new ToggleNode(false);
-
-    [Menu("Forget Radius",
-        "For rules with Remember Position on: how close you must get to a remembered spot, in grid " +
-        "units, before an icon with no monster there is removed. A monster killed while you walk " +
-        "away leaves the entity list without ever being seen dead, so this is what clears it. " +
-        "Keep it comfortably inside the range at which monsters load, or a live monster sitting " +
-        "just beyond that range will be forgotten while it is still alive.")]
-    public RangeNode<int> ForgetRadius { get; set; } = new RangeNode<int>(60, 10, 300);
-
-
-    [Menu("Ignore Fullscreen Panels", "Keep drawing while a fullscreen panel (Atlas, etc.) is open.")]
-    public ToggleNode IgnoreFullscreenPanels { get; set; } = new ToggleNode(false);
-
-    [Menu("Ignore Large Panels", "Keep drawing while a large panel is open.")]
-    public ToggleNode IgnoreLargePanels { get; set; } = new ToggleNode(false);
-
-    [Menu("Limit Draw Region",
-        "When the inventory or stash is open, hide only the icons that would land on top of that " +
-        "panel, instead of hiding everything. Turn off to always draw over open panels.")]
-    public ToggleNode LimitDrawRegion { get; set; } = new ToggleNode(true);
-
-    [Menu("Debug Overlay",
-        "Draws diagnostics top-left: how many monsters matched, whether the minimap is considered " +
-        "visible, and each match's effective sizes. Use this to tell 'icon is the wrong size' apart " +
-        "from 'icon is not being drawn at all'.")]
-    public ToggleNode DebugOverlay { get; set; } = new ToggleNode(false);
-
-    [Menu("Reset Everything")]
-    [JsonIgnore]
-    public CustomNode ResetEverything { get; set; }
-
-    /// <summary>
-    /// Set by the confirmation dialog and consumed by the plugin on the next Tick. Deferred rather
-    /// than reset inline, because clearing the rule list while ImGui is mid-render over it crashes.
-    /// </summary>
-    [JsonIgnore]
-    public bool ResetRequested { get; set; }
-
-    private void DrawResetControl()
+    private void DrawResetAll()
     {
-        if (ImGui.Button("Reset All Settings & Delete All Rules"))
-            ImGui.OpenPopup("##mma_reset_confirm");
+        var armed = ImGui.GetIO().KeyCtrl;
 
-        // ImGui.NET has no (name, flags) overload; the plain one already auto-resizes.
-        if (!ImGui.BeginPopupModal("##mma_reset_confirm"))
-            return;
+        ImGui.BeginDisabled(!armed);
+        var clicked = ImGui.Button("Reset all settings and rules###mmaResetAll");
+        ImGui.EndDisabled();
 
-        var ruleCount = Rules?.Content?.Count ?? 0;
-
-        ImGui.TextColored(new Vector4(1f, 0.35f, 0.35f, 1f), "Delete all custom alerts?");
-        ImGui.Separator();
-        ImGui.Text($"{ruleCount} alert rule{(ruleCount == 1 ? "" : "s")} will be permanently deleted,");
-        ImGui.Text("including their search terms, icons, sizes and sounds.");
-        ImGui.Text("Every other setting returns to its default.");
-        ImGui.Spacing();
-        ImGui.TextDisabled("This cannot be undone. A fresh example rule is created afterwards.");
-        ImGui.Separator();
-
-        if (ImGui.Button("Delete everything", new Vector2N(170, 0)))
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
         {
-            ResetRequested = true;
-            ImGui.CloseCurrentPopup();
+            ImGui.SetTooltip("Resets every setting to its default, except Enable, and replaces\n" +
+                             "the alert rules with the example rule. Hold Ctrl to click it.");
         }
 
-        ImGui.SameLine();
+        if (!armed)
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled("hold Ctrl");
+        }
 
-        if (ImGui.Button("Cancel", new Vector2N(110, 0)))
-            ImGui.CloseCurrentPopup();
-
-        ImGui.EndPopup();
+        if (clicked && armed)
+            ResetRequested = true;
     }
+}
+
+/// <summary>What the scan considers, and how often it runs. See EntityScan and RuleMatcher.</summary>
+public class ScanSettings
+{
+    public ScanSettings() => RefreshUi = new CustomNode(DrawRefresh);
 
     /// <summary>
-    /// Copies every value from a freshly constructed instance, so new settings are covered
-    /// automatically rather than needing to be listed here.
+    /// Whether search terms are tested against ObjectMagicProperties.Mods, the internal mod names such as
+    /// TormentHauntedMonsterThief. Does not affect the rare modifier count, which always reads the mods.
     /// </summary>
-    public void ResetToDefaults()
+    [Menu("Search mods")]
+    public ToggleNode SearchMods { get; set; } = new(true);
+
+    /// <summary>
+    /// Whether search terms are tested against the Buffs component's names, such as torment_cutthroat.
+    /// </summary>
+    [Menu("Search buffs", "Some monsters carry a mod only as a buff.")]
+    public ToggleNode SearchBuffs { get; set; } = new(true);
+
+    /// <summary>
+    /// Whether every rule matching an entity draws its icon, stacked in priority order so the highest-priority icon
+    /// sits on top, or only the highest-priority rule. Either way the highest-priority match owns the remembered
+    /// position and the sound.
+    /// </summary>
+    [Menu("Allow multiple matches",
+        "Every rule that matches a monster draws its icon, stacked by\n" +
+        "priority. Off: only the highest-priority rule.")]
+    public ToggleNode AllowMultipleMatches { get; set; } = new(true);
+
+    /// <summary>
+    /// The rarities a monster must have for any monster rule to match it. A rule's own rarity filter intersects with
+    /// this, so it can only narrow it. Not applied to Match any entity rules: a chest has no rarity.
+    /// </summary>
+    [Menu("Rarity filter",
+        "Applies to every rule except Match any entity rules. A rule's\n" +
+        "own rarity filter can only narrow it.")]
+    public RarityFilterSettings Rarity { get; set; } = RarityFilterSettings.RareAndUnique();
+
+    /// <summary>
+    /// Entities further than this from the player are skipped, in Entity.DistancePlayer's units. 0 is unlimited.
+    /// </summary>
+    [Menu("Max distance", "0 = unlimited.")]
+    public RangeNode<int> MaxDistance { get; set; } = new(0, 0, 5000);
+
+    /// <summary>
+    /// How often the entities are re-scanned. Drawing reads positions every frame, so stays smooth regardless.
+    /// </summary>
+    [Menu("Interval (ms)")]
+    public RangeNode<int> IntervalMs { get; set; } = new(250, 50, 2000);
+
+    /// <summary>
+    /// For rules with Remember position on: how close the player must come to a remembered position, in grid units,
+    /// before an icon with nothing there is dropped. A monster killed while the player walks away leaves the entity
+    /// list without ever being seen dead, so this is what clears it. It must stay inside the range at which monsters
+    /// load, or a live monster just beyond that range is forgotten while still alive. See
+    /// RememberedPositions.ForgetAbsentNear.
+    /// </summary>
+    [Menu("Forget radius",
+        "For Remember position: an icon is dropped once the player is this\n" +
+        "close to its spot and nothing is there. Keep it inside the range\n" +
+        "monsters load at.")]
+    public RangeNode<int> ForgetRadius { get; set; } = new(60, 10, 300);
+
+    /// <summary>
+    /// Scans now rather than at the next interval, dropping the remembered positions and letting every match play its
+    /// sound again. Drawing settings apply live without it. It raises RefreshRequested, which the next Tick answers.
+    /// </summary>
+    [JsonIgnore]
+    public CustomNode RefreshUi { get; set; }
+
+    [JsonIgnore]
+    [IgnoreMenu]
+    public bool RefreshRequested { get; set; }
+
+    private void DrawRefresh()
     {
-        CopyValues(new MonsterModAlerterSettings(), this);
+        if (ImGui.Button("Refresh now###mmaRefresh"))
+            RefreshRequested = true;
 
-        Rules.Content.Clear();
-        Rules.Content.Add(AlertRule.Default());
-    }
-
-    private static void CopyValues(object from, object to)
-    {
-        if (from == null || to == null)
-            return;
-
-        foreach (var prop in to.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        if (ImGui.IsItemHovered())
         {
-            if (!prop.CanRead)
-                continue;
-
-            var target = prop.GetValue(to);
-            var source = prop.GetValue(from);
-
-            if (target == null || source == null || target.GetType() != source.GetType())
-                continue;
-
-            var targetType = target.GetType();
-
-            // Rules are reset separately; buttons and custom nodes hold no persisted value.
-            // (IContentNodeBase is internal to ExileCore, so match the generic type instead.)
-            if (target is ButtonNode or CustomNode ||
-                (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(ContentNode<>)))
-            {
-                continue;
-            }
-
-            // Any settings node (Toggle/Range/Text/Color) exposes a writable Value.
-            var valueProp = targetType.GetProperty("Value");
-            if (valueProp is { CanRead: true, CanWrite: true })
-            {
-                valueProp.SetValue(target, valueProp.GetValue(source));
-                continue;
-            }
-
-            // Nested groups of our own (RarityFilterSettings, WorldDrawSettings, SoundSettings).
-            if (targetType.Namespace == typeof(MonsterModAlerterSettings).Namespace)
-                CopyValues(source, target);
+            ImGui.SetTooltip("Scans now, forgets remembered positions, and lets every match\n" +
+                             "play its sound again.");
         }
     }
 }
 
+/// <summary>Where and when the plugin draws, against the game's panels and other plugins.</summary>
+public class DisplaySettings
+{
+    /// <summary>
+    /// Map icons and counts are drawn on the large map only, not the minimap. World drawing is unaffected.
+    /// </summary>
+    [Menu("Draw only on large map", "Map icons and counts skip the minimap.")]
+    public ToggleNode DrawOnlyOnLargeMap { get; set; } = new(false);
+
+    /// <summary>
+    /// With an inventory or stash panel open, the drawable area shrinks to the part of the window it leaves uncovered,
+    /// the way Radar does. Off draws over the open panels. See MatchDrawing.DrawRegionOf.
+    /// </summary>
+    [Menu("Limit draw region",
+        "Skip what would be drawn over an open side panel, such as the\n" +
+        "inventory or stash.")]
+    public ToggleNode LimitDrawRegion { get; set; } = new(true);
+
+    [Menu("Ignore fullscreen panels", "Keep drawing while a fullscreen panel, such as the atlas, is open.")]
+    public ToggleNode IgnoreFullscreenPanels { get; set; } = new(false);
+
+    [Menu("Ignore large panels", "Keep drawing while a large panel is open.")]
+    public ToggleNode IgnoreLargePanels { get; set; } = new(false);
+
+    /// <summary>
+    /// ExileCore's plugin Order. Plugins render in ascending Order, so a higher value draws on top. ExileCore sorts
+    /// once, after every plugin is initialised, so a change takes effect at the next HUD start.
+    /// </summary>
+    [Menu("Render order", "Higher draws on top of other plugins. Read when the HUD loads\nthe plugin.")]
+    public RangeNode<int> RenderOrder { get; set; } = new(5000, -1000, 100000);
+}
+
+/// <summary>
+/// Drawing over the monster in the world. Each rule turns it on with Show in world. See MatchDrawing.
+/// </summary>
+public class WorldSettings
+{
+    [Menu("Enable")]
+    public ToggleNode Enable { get; set; } = new(true);
+
+    /// <summary>The rule's icon, at the rule's World icon size.</summary>
+    [Menu("Draw icon")]
+    public ToggleNode DrawIcon { get; set; } = new(true);
+
+    /// <summary>A frame round the monster, drawn once however many rules match it.</summary>
+    [Menu("Draw box")]
+    public ToggleNode DrawBox { get; set; } = new(false);
+
+    [Menu("Box size (px)")]
+    public RangeNode<int> BoxSize { get; set; } = new(64, 8, 200);
+
+    [Menu("Box thickness (px)")]
+    public RangeNode<int> BoxThickness { get; set; } = new(3, 1, 10);
+
+    /// <summary>
+    /// Colours the box with the tint of the highest-priority rule matching the monster, rather than Box colour.
+    /// </summary>
+    [Menu("Use rule tint for box")]
+    public ToggleNode UseRuleTintForBox { get; set; } = new(true);
+
+    [Menu("Box colour", "Used when Use rule tint for box is off.")]
+    public ColorNode BoxColour { get; set; } = new(Colours.FromArgb(255, 235, 90, 90));
+
+    /// <summary>
+    /// The rule's Label, or the matched mod, buff or path when the label is blank, under the icon and box. Labels of
+    /// several matching rules stack downwards.
+    /// </summary>
+    [Menu("Draw label", "A rule's Label, or the matched name when it has none, under the\nicon.")]
+    public ToggleNode DrawLabel { get; set; } = new(false);
+
+    [Menu("Label colour")]
+    public ColorNode LabelColour { get; set; } = new(Colours.FromArgb(255, 255, 210, 80));
+
+    [Menu("Label scale")]
+    public RangeNode<float> LabelScale { get; set; } = new(1.0f, 0.5f, 3.0f);
+}
+
+/// <summary>
+/// How the modifier count is drawn. Which monsters get one is decided per alert rule, by Show mod count, so a count is
+/// always tied to a rule rather than being a second list of monsters to keep in step with the first.
+/// </summary>
+public class ModCountSettings
+{
+    private const string CentredOnIcon = "Centred on icon";
+    private const string RightOfIcon = "Right of icon";
+    private const string LeftOfIcon = "Left of icon";
+    private const string AboveIcon = "Above icon";
+    private const string BelowIcon = "Below icon";
+
+    /// <summary>
+    /// Where the number sits against the icon. Centred is the default: with the outline it leaves no doubt which icon a
+    /// number belongs to when monsters are packed together. The values are saved as text, so renaming one resets it.
+    /// </summary>
+    [Menu("Position")]
+    public ListNode Position { get; set; } = new()
+    {
+        Values = [CentredOnIcon, RightOfIcon, LeftOfIcon, AboveIcon, BelowIcon],
+        Value = CentredOnIcon,
+    };
+
+    /// <summary>Pixels between the icon's edge and the number, for the positions beside the icon.</summary>
+    [Menu("Gap from icon (px)")]
+    public RangeNode<int> Gap { get; set; } = new(2, 0, 40);
+
+    [Menu("Text scale")]
+    public RangeNode<float> TextScale { get; set; } = new(1.0f, 0.5f, 3.0f);
+
+    /// <summary>
+    /// Eight offset copies in the outline colour under the number. Reads over any terrain without covering the map the
+    /// way a filled box does.
+    /// </summary>
+    [Menu("Draw outline")]
+    public ToggleNode DrawOutline { get; set; } = new(true);
+
+    [Menu("Outline colour")]
+    public ColorNode OutlineColour { get; set; } = new(Color.Black);
+
+    /// <summary>
+    /// A filled box behind the number. Off by default: the outline reads better and hides less of the map.
+    /// </summary>
+    [Menu("Draw background")]
+    public ToggleNode DrawBackground { get; set; } = new(false);
+
+    [Menu("Background colour")]
+    public ColorNode BackgroundColour { get; set; } = new(new Color(0, 0, 0, 200));
+
+    /// <summary>The same number over the monster in the world, beside its world icon.</summary>
+    [Menu("Draw in world", "As well as on the map.")]
+    public ToggleNode DrawInWorld { get; set; } = new(false);
+
+    /// <summary>
+    /// Offset from the monster's position that puts the number beside an icon of the given size, rather than under it.
+    /// </summary>
+    public Vector2N OffsetFor(float iconSize, Vector2N textSize)
+    {
+        var pad = iconSize / 2f + Gap.Value;
+
+        return Position.Value switch
+        {
+            LeftOfIcon => new Vector2N(-pad - textSize.X / 2f, 0),
+            AboveIcon => new Vector2N(0, -pad - textSize.Y / 2f),
+            BelowIcon => new Vector2N(0, pad + textSize.Y / 2f),
+            CentredOnIcon => Vector2N.Zero,
+            _ => new Vector2N(pad + textSize.X / 2f, 0),
+        };
+    }
+}
+
+/// <summary>
+/// The seen tally: a list at a fixed spot on the screen of how many of each kind of thing the rules with Add to seen
+/// tally on have matched since entering the area, named by metadata path with the common prefix removed. See SeenTally.
+/// </summary>
+public class SeenTallySettings
+{
+    public SeenTallySettings() => ClearUi = new CustomNode(DrawClear);
+
+    /// <summary>
+    /// Whether the tally is drawn. The toggle key flips this setting, so the menu and the key never disagree.
+    /// </summary>
+    [Menu("Show")]
+    public ToggleNode Show { get; set; } = new(false);
+
+    /// <summary>Flips Show in game. Unbound by default.</summary>
+    [Menu("Toggle key", "Shows and hides the tally in game.")]
+    public HotkeyNodeV2 ToggleKey { get; set; } = new(Keys.None);
+
+    /// <summary>
+    /// Empties the tally now; it also empties on every area change. Raises ClearRequested for the next Tick.
+    /// </summary>
+    [JsonIgnore]
+    public CustomNode ClearUi { get; set; }
+
+    [JsonIgnore]
+    [IgnoreMenu]
+    public bool ClearRequested { get; set; }
+
+    [Menu("X (px)")]
+    public RangeNode<int> X { get; set; } = new(20, 0, 4000);
+
+    [Menu("Y (px)")]
+    public RangeNode<int> Y { get; set; } = new(300, 0, 3000);
+
+    /// <summary>The longest list drawn. Rows are ordered by count, so the rows left off are the rarest.</summary>
+    [Menu("Max rows", "The rarest rows are left off, with a line saying how many.")]
+    public RangeNode<int> MaxRows { get; set; } = new(20, 1, 60);
+
+    [Menu("Text scale")]
+    public RangeNode<float> TextScale { get; set; } = new(1.0f, 0.5f, 3.0f);
+
+    [Menu("Draw background")]
+    public ToggleNode DrawBackground { get; set; } = new(true);
+
+    [Menu("Background colour")]
+    public ColorNode BackgroundColour { get; set; } = new(new Color(0, 0, 0, 180));
+
+    [Menu("Name colour")]
+    public ColorNode NameColour { get; set; } = new(Color.White);
+
+    [Menu("Count colour")]
+    public ColorNode CountColour { get; set; } = new(Colours.FromArgb(255, 255, 210, 80));
+
+    private void DrawClear()
+    {
+        if (ImGui.Button("Clear tally###mmaClearTally"))
+            ClearRequested = true;
+    }
+}
+
+/// <summary>The alert sound. Each rule turns it on with Play sound and names its file. See AlertSound.</summary>
+public class SoundSettings
+{
+    [Menu("Enable")]
+    public ToggleNode Enable { get; set; } = new(true);
+
+    /// <summary>The shortest time between two sounds, loop repeats included.</summary>
+    [Menu("Cooldown (ms)")]
+    public RangeNode<int> CooldownMs { get; set; } = new(800, 100, 30000);
+
+    /// <summary>
+    /// On: the sound plays again every cooldown while a matching monster is alive. Off: each monster is announced once.
+    /// </summary>
+    [Menu("Loop while alive",
+        "Play again every cooldown while a matching monster lives,\n" +
+        "rather than once per monster.")]
+    public ToggleNode LoopWhileAlive { get; set; } = new(false);
+}
+
+public class DebugSettings
+{
+    /// <summary>
+    /// The debug overlay, top-left: match and rule counts, the remembered positions, the walk over every entity, map
+    /// visibility, the draw region, and each match's icon sizes and map position, so an icon that is not drawn can be
+    /// told apart from one drawn wrong. The first match whose rule shows a mod count also lists its mod entries. See
+    /// DebugOverlay.
+    /// </summary>
+    [Menu("Show overlay", "Lists matches, map visibility and each match's draw position,\ntop-left.")]
+    public ToggleNode ShowOverlay { get; set; } = new(false);
+}
+
+/// <summary>Which monster rarities pass. Used by the Scan section and by each rule.</summary>
 [Submenu(CollapsedByDefault = false)]
 public class RarityFilterSettings
 {
-    [Menu("Normal")] public ToggleNode Normal { get; set; } = new ToggleNode(true);
-    [Menu("Magic")] public ToggleNode Magic { get; set; } = new ToggleNode(true);
-    [Menu("Rare")] public ToggleNode Rare { get; set; } = new ToggleNode(true);
-    [Menu("Unique")] public ToggleNode Unique { get; set; } = new ToggleNode(true);
+    [Menu("Normal")]
+    public ToggleNode Normal { get; set; } = new(true);
 
-    /// <summary>Global default: skip the white/magic noise.</summary>
-    public static RarityFilterSettings RareAndUnique() => new RarityFilterSettings
+    [Menu("Magic")]
+    public ToggleNode Magic { get; set; } = new(true);
+
+    [Menu("Rare")]
+    public ToggleNode Rare { get; set; } = new(true);
+
+    [Menu("Unique")]
+    public ToggleNode Unique { get; set; } = new(true);
+
+    /// <summary>The default for the Scan section and for new rules: rare and unique monsters only.</summary>
+    public static RarityFilterSettings RareAndUnique() => new()
     {
         Normal = new ToggleNode(false),
         Magic = new ToggleNode(false),
@@ -236,108 +475,68 @@ public class RarityFilterSettings
     };
 }
 
-[Submenu(CollapsedByDefault = false)]
-public class WorldDrawSettings
-{
-    [Menu("Draw In World")] public ToggleNode Enable { get; set; } = new ToggleNode(true);
-    [Menu("Draw Icon In World", "Draw the rule's icon above the monster as well as on the minimap. " +
-                                "Size is set per rule, under that rule's World Icon Size.")]
-    public ToggleNode DrawIcon { get; set; } = new ToggleNode(true);
-    [Menu("Draw Box")] public ToggleNode DrawBox { get; set; } = new ToggleNode(false);
-    [Menu("Box Size")] public RangeNode<int> BoxSize { get; set; } = new RangeNode<int>(64, 8, 200);
-    [Menu("Frame Thickness")] public RangeNode<int> Thickness { get; set; } = new RangeNode<int>(3, 1, 10);
-
-    [Menu("Box Color", "Colour of the world box. Turn on 'Use Rule Tint For Box' to colour it per rule instead.")]
-    public ColorNode BoxColor { get; set; } = new ColorNode(Color.Red);
-
-    [Menu("Use Rule Tint For Box",
-        "On (default): each rule's own Tint colours its box, so different rules get different boxes. " +
-        "Turn off to use the single Box Color above for every rule.")]
-    public ToggleNode UseRuleTintForBox { get; set; } = new ToggleNode(true);
-    [Menu("Draw Label")] public ToggleNode DrawLabel { get; set; } = new ToggleNode(false);
-    [Menu("Label Color")] public ColorNode LabelColor { get; set; } = new ColorNode(Color.Yellow);
-    [Menu("Label Scale")] public RangeNode<float> LabelScale { get; set; } = new RangeNode<float>(1.0f, 0.5f, 3.0f);
-}
-
-[Submenu(CollapsedByDefault = false)]
-public class SoundSettings
-{
-    [Menu("Play Sound On Match")] public ToggleNode Enable { get; set; } = new ToggleNode(true);
-
-    [Menu("Cooldown (ms)", "Minimum gap between alert sounds, including successive loop repeats.")]
-    public RangeNode<int> CooldownMs { get; set; } = new RangeNode<int>(800, 100, 30000);
-
-    [Menu("Loop Sound While Monster Alive",
-        "Off (default): each monster is announced once. On: keeps re-playing on the cooldown for as " +
-        "long as a matching monster is alive.")]
-    public ToggleNode LoopWhileAlive { get; set; } = new ToggleNode(false);
-}
-
 /// <summary>
-/// Matches a monster by its metadata path, e.g.
+/// Matches an entity by its metadata path, e.g.
 /// Metadata/Monsters/BeehiveBehemoth/BeehiveBehemothBossStandaloneAllFlame.
 ///
-/// Blank always means "no opinion" — it matches every monster whether or not <see cref="Exclude"/>
-/// is ticked. Treating a blank exclusion as "everything is excluded" would silently switch a rule
-/// off the moment the text was cleared, which is the opposite of what clearing a filter suggests.
+/// Blank always means no opinion: it matches every entity whether or not Exclude is on. Treating a blank exclusion as
+/// "everything is excluded" would switch a rule off the moment the text was cleared.
 /// </summary>
 [Submenu(CollapsedByDefault = false)]
-public class MetadataFilterSettings
+public class PathFilterSettings
 {
-    [Menu("Path Contains",
-        "Case-insensitive substring of the monster's metadata path, e.g. \"BeehiveBehemoth\" or the " +
-        "full Metadata/Monsters/BeehiveBehemoth/BeehiveBehemothBossStandaloneAllFlame. " +
-        "Leave blank for any monster. Comma-separated entries are ORed, since these name " +
-        "alternatives rather than conditions that must all hold.")]
-    public TextNode Filter { get; set; } = new TextNode("");
+    /// <summary>
+    /// Comma-separated parts of the metadata path, each matched as a case-insensitive substring. They are ORed, since
+    /// they name alternatives rather than conditions that must all hold.
+    /// </summary>
+    [Menu("Paths",
+        "Comma-separated parts of the metadata path; any one matches,\n" +
+        "e.g. Metadata/Monsters/BeehiveBehemoth. Blank matches all.")]
+    public TextNode Paths { get; set; } = new("");
 
-    [Menu("Invert",
-        "Match every monster EXCEPT those above. Use this to flag everything that is not a given " +
-        "family, e.g. to clear the trash before starting on the ones you saved.")]
-    public ToggleNode Exclude { get; set; } = new ToggleNode(false);
+    /// <summary>
+    /// Matches every entity except those the paths name, e.g. to mark everything that is not a given family.
+    /// </summary>
+    [Menu("Exclude", "Match everything except these paths.")]
+    public ToggleNode Exclude { get; set; } = new(false);
 
-    public static MetadataFilterSettings Excluding(string path) => new MetadataFilterSettings
-    {
-        Filter = new TextNode(path),
-        Exclude = new ToggleNode(true),
-    };
+    private string _splitSource;
+    private string[] _splitPaths = [];
 
-    /// <summary>Cached split of <see cref="Filter"/>, rebuilt only when the text changes.</summary>
-    [JsonIgnore] private string _cachedSource;
-    [JsonIgnore] private string[] _cachedTerms = [];
-
+    /// <summary>Paths split on commas, re-split only when the text changes.</summary>
     [JsonIgnore]
-    public string[] Terms
+    public string[] PathList
     {
         get
         {
-            var source = Filter?.Value ?? "";
-            if (source != _cachedSource)
+            var source = Paths?.Value ?? "";
+            if (source != _splitSource)
             {
-                _cachedSource = source;
-                _cachedTerms = source.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                _splitSource = source;
+                _splitPaths = source.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             }
 
-            return _cachedTerms;
+            return _splitPaths;
         }
     }
 
-    [JsonIgnore] public bool IsBlank => Terms.Length == 0;
+    [JsonIgnore]
+    public bool IsBlank => PathList.Length == 0;
 
-    /// <summary>True when this monster passes the filter, honouring <see cref="Exclude"/>.</summary>
+    /// <summary>Whether an entity with this metadata path passes the filter, honouring Exclude.</summary>
     public bool Matches(string path)
     {
-        var terms = Terms;
-        if (terms.Length == 0)
+        var paths = PathList;
+        if (paths.Length == 0)
             return true;
 
         var hit = false;
 
         if (!string.IsNullOrEmpty(path))
         {
-            foreach (var term in terms)
+            foreach (var part in paths)
             {
-                if (path.Contains(term, StringComparison.OrdinalIgnoreCase))
+                if (path.Contains(part, StringComparison.OrdinalIgnoreCase))
                 {
                     hit = true;
                     break;
@@ -348,118 +547,5 @@ public class MetadataFilterSettings
         return Exclude ? !hit : hit;
     }
 
-    public string Describe() =>
-        IsBlank ? "any monster" : (Exclude ? "not " : "") + Filter.Value;
-}
-
-/// <summary>
-/// The on-screen tally of what has been matched since entering the area. Counts entities, not
-/// matches: an entity that several rules picked out is still one thing that was seen once.
-/// </summary>
-[Submenu(CollapsedByDefault = true)]
-public class SeenPanelSettings
-{
-    [Menu("Show Counter",
-        "Lists how many of each kind of thing has been matched since you entered the area, named " +
-        "by metadata path with the \"Metadata/Critters/\" or \"Metadata/Monsters/\" prefix " +
-        "removed. Counts only the rules with Count In Seen This Map ticked, so nothing appears " +
-        "here until one of them has it. Resets on area change.")]
-    public ToggleNode Show { get; set; } = new ToggleNode(false);
-
-    [Menu("Toggle Key",
-        "Shows and hides the counter in game. Leave as None to toggle it from this menu only.")]
-    public HotkeyNodeV2 ToggleKey { get; set; } = new HotkeyNodeV2(Keys.None);
-
-    [Menu("X", "Distance from the left edge of the window, in pixels.")]
-    public RangeNode<int> X { get; set; } = new RangeNode<int>(20, 0, 4000);
-
-    [Menu("Y", "Distance from the top edge of the window, in pixels.")]
-    public RangeNode<int> Y { get; set; } = new RangeNode<int>(300, 0, 3000);
-
-    [Menu("Text Size")]
-    public RangeNode<float> TextScale { get; set; } = new RangeNode<float>(1.0f, 0.5f, 3.0f);
-
-    [Menu("Max Rows",
-        "Longest list to draw. Rows are ordered by count, so the ones left off are the rarest; " +
-        "a line at the bottom says how many were not shown.")]
-    public RangeNode<int> MaxRows { get; set; } = new RangeNode<int>(20, 1, 60);
-
-    [Menu("Background")]
-    public ToggleNode DrawBackground { get; set; } = new ToggleNode(true);
-
-    [Menu("Background Colour")]
-    public ColorNode BackgroundColor { get; set; } = new ColorNode(new Color(0, 0, 0, 180));
-
-    [Menu("Name Colour")]
-    public ColorNode TextColor { get; set; } = new ColorNode(Color.White);
-
-    [Menu("Count Colour")]
-    public ColorNode CountColor { get; set; } = new ColorNode(Color.Yellow);
-
-    [Menu("Reset Counts", "Empties the tally without waiting for the next area.")]
-    [JsonIgnore]
-    public ButtonNode Reset { get; set; } = new ButtonNode();
-}
-
-/// <summary>
-/// How the modifier count is drawn. Which monsters get one is decided per alert rule, by its
-/// Show Mod Count tick — so a count is always tied to a rule you already wrote, rather than being a
-/// second list of monsters to keep in step with the first.
-/// </summary>
-[Submenu(CollapsedByDefault = true)]
-public class ModCountSettings
-{
-    [Menu("Text Size")]
-    public RangeNode<float> TextScale { get; set; } = new RangeNode<float>(1.0f, 0.5f, 3.0f);
-
-    [Menu("Position",
-        "Where the number sits relative to the monster's icon. Centred is the default and works " +
-        "because of the outline below — it leaves no doubt which icon a number belongs to when " +
-        "monsters are packed together. The offset positions are there for when the icon itself " +
-        "matters more than the number.")]
-    public ListNode Placement { get; set; } = new ListNode
-    {
-        Values = ["Centred on icon", "Right of icon", "Left of icon", "Above icon", "Below icon"],
-        Value = "Centred on icon",
-    };
-
-    [Menu("Gap", "Extra pixels between the icon's edge and the number.")]
-    public RangeNode<int> Gap { get; set; } = new RangeNode<int>(2, 0, 40);
-
-    [Menu("Outline",
-        "Draws the number with a dark outline instead of a filled box. Stays readable over any " +
-        "terrain without covering what is underneath.")]
-    public ToggleNode DrawOutline { get; set; } = new ToggleNode(true);
-
-    [Menu("Outline Colour")]
-    public ColorNode OutlineColor { get; set; } = new ColorNode(Color.Black);
-
-    [Menu("Background",
-        "Solid box behind the number. Off by default — the outline reads better and does not hide " +
-        "the map underneath.")]
-    public ToggleNode DrawBackground { get; set; } = new ToggleNode(false);
-
-    [Menu("Background Colour")]
-    public ColorNode BackgroundColor { get; set; } = new ColorNode(new Color(0, 0, 0, 200));
-
-    [Menu("Also Draw In World", "Show the same number over the monster itself, not just on the map.")]
-    public ToggleNode DrawInWorld { get; set; } = new ToggleNode(false);
-
-    /// <summary>
-    /// Offset from the monster's position that puts the number beside an icon of the given size,
-    /// rather than under it.
-    /// </summary>
-    public Vector2N OffsetFor(float iconSize, Vector2N textSize)
-    {
-        var pad = iconSize / 2f + Gap.Value;
-
-        return Placement.Value switch
-        {
-            "Left of icon" => new Vector2N(-pad - textSize.X / 2f, 0),
-            "Above icon" => new Vector2N(0, -pad - textSize.Y / 2f),
-            "Below icon" => new Vector2N(0, pad + textSize.Y / 2f),
-            "Centred on icon" => Vector2N.Zero,
-            _ => new Vector2N(pad + textSize.X / 2f, 0),
-        };
-    }
+    public string Describe() => IsBlank ? "any monster" : (Exclude ? "not " : "") + Paths.Value;
 }

@@ -7,16 +7,19 @@ using ExileCore.Shared.Nodes;
 namespace MonsterModAlerter;
 
 /// <summary>
-/// Marks monsters, and with Match Any Entity any entity, by the names of their modifiers and buffs, their metadata path
-/// and their rarity, as set by the alert rules: an icon on the minimap and in the world, an optional modifier count,
-/// and a sound. Optional per rule: the last position of a monster that left range, and a per-area tally.
+/// Marks monsters, and with Match any entity any entity, by the names of their modifiers and buffs, their metadata path
+/// and their rarity, as set by the alert rules: an icon on the map and in the world, an optional modifier count, and a
+/// sound. Optional per rule: the last position of a monster that left range, and a per-area seen tally.
 ///
-/// The work is split by what it is for: EntityScan walks the entities every Scan Interval and runs RuleMatcher over
+/// The work is split by what it is for: EntityScan walks the entities every scan interval and runs RuleMatcher over
 /// them, keeping RememberedPositions and SeenTally up to date; MatchDrawing and DebugOverlay draw what the last scan
 /// published; AlertSound plays the sound.
 /// </summary>
 public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 {
+    /// <summary>The ConfigVersion a saved file reaches once every step in ApplySettingsChanges has run.</summary>
+    private const int CurrentConfigVersion = 0;
+
     private readonly SeenTally _tally = new();
     private readonly EntityScan _scan;
     private readonly AlertSound _sound = new();
@@ -24,32 +27,21 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     private MatchDrawing _matchDrawing;
     private DebugOverlay _debugOverlay;
 
-    // Set by the Refresh Now and Reset Counts buttons and answered by the next Tick. A button fires while the menu is
-    // drawn; answering in the Tick keeps every change to the scan's state, and every scan, in one place.
-    private volatile bool _refreshRequested;
-    private volatile bool _resetSeenRequested;
-
-    public MonsterModAlerter()
-    {
-        Name = "Monster Mod Alerter";
-        _scan = new EntityScan(_tally);
-    }
+    public MonsterModAlerter() => _scan = new EntityScan(_tally);
 
     public override bool Initialise()
     {
         // ExileCore sorts plugins by Order ascending and renders in that sequence, so a high value draws on top of
         // other plugins. The sort runs once, after every plugin has been initialised, so assigning here applies this
         // session - but later edits need a HUD restart.
-        Order = Settings.RenderOrder.Value;
+        Order = Settings.Display.RenderOrder.Value;
 
-        // First run (or after deleting every rule) starts with a usable example.
+        // First run, or after every rule is deleted, starts with the example rule.
         if (Settings.Rules.Content.Count == 0)
-            Settings.Rules.Content.Add(AlertRule.Default());
+            Settings.Rules.Content.Add(AlertRule.Example());
 
-        Settings.ForceRefresh.OnPressed = () => _refreshRequested = true;
-        Settings.SeenPanel.Reset.OnPressed = () => _resetSeenRequested = true;
-
-        RegisterHotkey(Settings.SeenPanel.ToggleKey);
+        RegisterHotkey(Settings.SeenTally.ToggleKey);
+        ApplySettingsChanges();
 
         _matchDrawing = new MatchDrawing(Graphics);
         _debugOverlay = new DebugOverlay(Graphics, Name);
@@ -58,8 +50,20 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     }
 
     /// <summary>
-    /// Tells Input about a hotkey so PressedOnce answers, and again whenever it is rebound in the menu. A key left unbound
-    /// is not registered, since registering None would claim a key nobody pressed.
+    /// Brings a saved settings file up to date with changed defaults, once per change. No default has changed since the
+    /// plugin was published, so there are no steps yet; the first adds one and raises CurrentConfigVersion to 1.
+    /// </summary>
+    private void ApplySettingsChanges()
+    {
+        if (Settings.ConfigVersion >= CurrentConfigVersion)
+            return;
+
+        Settings.ConfigVersion = CurrentConfigVersion;
+    }
+
+    /// <summary>
+    /// Tells Input about a hotkey so PressedOnce answers, and again whenever it is rebound in the menu. A key left
+    /// unbound is not registered, since registering None would claim a key nobody pressed.
     /// </summary>
     private static void RegisterHotkey(HotkeyNodeV2 hotkey)
     {
@@ -88,7 +92,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// <summary>
     /// Drops the announced entities and re-scans now instead of waiting out the scan interval. Drawing settings are
     /// read per frame, so this is only needed to re-arm sound alerts or to apply a rule change without waiting.
-    /// Remembered positions are dropped too: Refresh Now exists to re-derive everything from the current state, and
+    /// Remembered positions are dropped too: Refresh now exists to re-derive everything from the current state, and
     /// keeping ghosts would defeat that.
     /// </summary>
     private void ForceRefresh()
@@ -103,38 +107,20 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
     public override Job Tick()
     {
-        // Handled before the Enable check so a reset still applies while the plugin is switched off.
-        if (Settings.ResetRequested)
-        {
-            Settings.ResetRequested = false;
-            Settings.ResetToDefaults();
-            ForceRefresh();
-            LogMessage($"{Name}: all rules deleted and settings restored to defaults.");
-        }
-
-        if (_refreshRequested)
-        {
-            _refreshRequested = false;
-            ForceRefresh();
-        }
-
-        if (_resetSeenRequested)
-        {
-            _resetSeenRequested = false;
-            _tally.Clear();
-        }
+        // Before the Enable check, so the menu's buttons work with the plugin switched off.
+        AnswerMenuButtons();
 
         if (!Settings.Enable || !Safe.Read(GameController, static g => g.InGame, false))
             return null;
 
         // Polled before the scan interval gate, so the key still answers on the frames that do not re-scan. Toggling
-        // the setting itself is deliberate: the menu tick and the key are one switch, not two that can disagree.
-        var toggleKey = Settings.SeenPanel.ToggleKey;
+        // the setting itself is deliberate: the menu and the key are one switch, not two that can disagree.
+        var toggleKey = Settings.SeenTally.ToggleKey;
 
         if (IsBound(toggleKey) && toggleKey.PressedOnce())
-            Settings.SeenPanel.Show.Value = !Settings.SeenPanel.Show.Value;
+            Settings.SeenTally.Show.Value = !Settings.SeenTally.Show.Value;
 
-        if (_scanTimer.ElapsedMilliseconds < Settings.ScanIntervalMs)
+        if (_scanTimer.ElapsedMilliseconds < Settings.Scan.IntervalMs)
             return null;
 
         _scanTimer.Restart();
@@ -143,8 +129,41 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         return null;
     }
 
+    /// <summary>
+    /// The menu's buttons raise flags in the settings and this answers them. A button fires while the menu is drawn;
+    /// answering here keeps every change to the scan's state, and every scan, in the Tick.
+    /// </summary>
+    private void AnswerMenuButtons()
+    {
+        if (Settings.ResetRequested)
+        {
+            Settings.ResetRequested = false;
+            SettingsReset.Apply(Settings);
+            ForceRefresh();
+            LogMessage("Settings and rules reset to defaults", 5f);
+            CursorMessage.Show(CursorMessage.Kind.Success, "Settings reset");
+        }
+
+        if (Settings.Scan.RefreshRequested)
+        {
+            Settings.Scan.RefreshRequested = false;
+            ForceRefresh();
+            CursorMessage.Show(CursorMessage.Kind.Info, "Refreshed");
+        }
+
+        if (Settings.SeenTally.ClearRequested)
+        {
+            Settings.SeenTally.ClearRequested = false;
+            _tally.Clear();
+            CursorMessage.Show(CursorMessage.Kind.Info, "Tally cleared");
+        }
+    }
+
     public override void Render()
     {
+        // Before the Enable check, so a message raised with the plugin switched off is still seen.
+        CursorMessage.Draw(Graphics, GameController);
+
         var matches = _scan.Matches;
         var outOfRange = _scan.OutOfRange;
 
@@ -156,24 +175,26 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         if (ingameUi == null)
             return;
 
-        if (!Settings.IgnoreFullscreenPanels &&
+        var display = Settings.Display;
+
+        if (!display.IgnoreFullscreenPanels &&
             Safe.Read(ingameUi, static ui => ui.FullscreenPanels.Any(panel => panel.IsVisible), false))
             return;
 
-        if (!Settings.IgnoreLargePanels &&
+        if (!display.IgnoreLargePanels &&
             Safe.Read(ingameUi, static ui => ui.LargePanels.Any(panel => panel.IsVisible), false))
             return;
 
         // Drawn before the nothing-to-draw check below: the tally is a record of the whole map, so it has to stay up on
         // the screen where everything has already been killed.
-        _tally.Draw(Graphics, Settings.SeenPanel);
+        _tally.Draw(Graphics, Settings.SeenTally);
 
         // Empty when it cannot be read, which draws nothing rather than drawing over the panels.
-        var region = Safe.Read((GameController, Ui: ingameUi, Limit: Settings.LimitDrawRegion.Value),
+        var region = Safe.Read((GameController, Ui: ingameUi, Limit: display.LimitDrawRegion.Value),
             static s => MatchDrawing.DrawRegionOf(s.GameController, s.Ui, s.Limit), default);
 
         var largeMapVisible = Safe.Read(ingameUi, static ui => ui.Map.LargeMap.IsVisibleLocal, false);
-        var minimapVisible = Settings.DrawOnlyOnLargeMap
+        var minimapVisible = display.DrawOnlyOnLargeMap
             ? largeMapVisible
             : largeMapVisible || Safe.Read(ingameUi, static ui => ui.Map.SmallMiniMap.IsVisibleLocal, false);
 
@@ -182,7 +203,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         // Drawn when nothing matched as well: that is exactly the state the overlay is opened to explain. Guarded as a
         // whole: it reads freely, and a throw part-way only cuts this frame's text short.
-        if (Settings.DebugOverlay)
+        if (Settings.Debug.ShowOverlay)
         {
             Safe.Try(() => _debugOverlay.Draw(
                 GameController, Settings, _scan, _tally, matches, region, ingameUi, minimapVisible));

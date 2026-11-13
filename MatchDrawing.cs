@@ -74,7 +74,7 @@ internal sealed class MatchDrawing
             var match = matches[i];
 
             if (placement.OnMap && region.Contains(placement.MapPoint.X, placement.MapPoint.Y))
-                DrawIcon(placement.MapPoint, match.Rule.IconSize.Value, match.Rule);
+                DrawIcon(placement.MapPoint, match.Rule.MapIconSize.Value, match.Rule);
 
             if (placement.InWorld)
                 DrawInWorld(settings.World, placement.ScreenPoint, match, region);
@@ -92,7 +92,7 @@ internal sealed class MatchDrawing
         foreach (var match in matches)
         {
             var state = (Drawing: this, GameController: gameController, Match: match,
-                OnMap: minimapVisible && match.Rule.ShowOnMinimap, InWorld: worldEnabled && match.Rule.ShowInWorld);
+                OnMap: minimapVisible && match.Rule.ShowOnMap, InWorld: worldEnabled && match.Rule.ShowInWorld);
 
             _placements.Add(Safe.Read(state,
                 static s => s.Drawing.PlacementOf(s.GameController, s.Match, s.OnMap, s.InWorld), default));
@@ -121,7 +121,7 @@ internal sealed class MatchDrawing
         return new Placement(onMap, mapPoint, inWorld, screenPoint);
     }
 
-    private void DrawInWorld(WorldDrawSettings world, Vector2 screenPos, RuleMatch match, RectangleF region)
+    private void DrawInWorld(WorldSettings world, Vector2 screenPos, RuleMatch match, RectangleF region)
     {
         if (!region.Contains(screenPos.X, screenPos.Y))
             return;
@@ -133,11 +133,11 @@ internal sealed class MatchDrawing
         if (world.DrawBox && match.Slot == 0)
         {
             var half = world.BoxSize.Value / 2f;
-            var boxColor = world.UseRuleTintForBox ? match.Rule.Tint.Value : world.BoxColor.Value;
+            var boxColour = world.UseRuleTintForBox ? match.Rule.Tint.Value : world.BoxColour.Value;
             _graphics.DrawFrame(
                 new RectangleF(screenPos.X - half, screenPos.Y - half, world.BoxSize.Value, world.BoxSize.Value),
-                boxColor,
-                world.Thickness.Value);
+                boxColour,
+                world.BoxThickness.Value);
         }
 
         if (world.DrawIcon)
@@ -161,7 +161,7 @@ internal sealed class MatchDrawing
             // Stacked rather than side by side: labels are far wider than icons, so a row of them would run into each
             // other and into the neighbouring entities'.
             var y = screenPos.Y + halfExtent + labelGap + match.Slot * (textSize.Y + labelGap);
-            _graphics.DrawText(text, new Vector2(screenPos.X - textSize.X / 2f, y), world.LabelColor.Value);
+            _graphics.DrawText(text, new Vector2(screenPos.X - textSize.X / 2f, y), world.LabelColour.Value);
         }
     }
 
@@ -185,7 +185,7 @@ internal sealed class MatchDrawing
         foreach (var entry in stale)
         {
             var rule = entry.Rule;
-            if (!rule.ShowOnMinimap)
+            if (!rule.ShowOnMap)
                 continue;
 
             var mapPoint = Safe.Read((Graphics: _graphics, entry.GridPos),
@@ -194,7 +194,7 @@ internal sealed class MatchDrawing
             if (mapPoint is not { } point || !region.Contains(point.X, point.Y))
                 continue;
 
-            DrawIcon(point, rule.IconSize.Value, rule);
+            DrawIcon(point, rule.MapIconSize.Value, rule);
 
             if (!rule.ShowModCount || entry.ModCount < rule.ModCountMinimum.Value)
                 continue;
@@ -207,8 +207,8 @@ internal sealed class MatchDrawing
                 var text = entry.ModCount.ToString();
                 var size = _graphics.MeasureText(text);
 
-                DrawNumber(text, size, point + countSettings.OffsetFor(rule.IconSize.Value, size),
-                    region, rule.ModCountColor.Value, countSettings);
+                DrawNumber(text, size, point + countSettings.OffsetFor(rule.MapIconSize.Value, size),
+                    region, rule.ModCountColour.Value, countSettings);
             }
         }
     }
@@ -265,11 +265,11 @@ internal sealed class MatchDrawing
 
                 var text = match.ModCount.ToString();
                 var size = _graphics.MeasureText(text);
-                var tint = rule.ModCountColor.Value;
+                var tint = rule.ModCountColour.Value;
 
                 if (placement.OnMap)
                 {
-                    var at = placement.MapPoint + countSettings.OffsetFor(rule.IconSize.Value, size);
+                    var at = placement.MapPoint + countSettings.OffsetFor(rule.MapIconSize.Value, size);
                     DrawNumber(text, size, at, region, tint, countSettings);
                 }
 
@@ -294,7 +294,7 @@ internal sealed class MatchDrawing
         {
             _graphics.DrawBox(
                 new RectangleF(pos.X - 2f, pos.Y - 1f, size.X + 4f, size.Y + 2f),
-                settings.BackgroundColor.Value);
+                settings.BackgroundColour.Value);
         }
 
         // Eight offset copies underneath, which reads over any terrain without covering the map the way a filled box
@@ -302,7 +302,7 @@ internal sealed class MatchDrawing
         // against a busy background.
         if (settings.DrawOutline)
         {
-            var outline = settings.OutlineColor.Value;
+            var outline = settings.OutlineColour.Value;
 
             for (var dx = -1; dx <= 1; dx++)
             for (var dy = -1; dy <= 1; dy++)

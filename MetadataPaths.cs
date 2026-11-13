@@ -6,7 +6,7 @@ internal static class MetadataPaths
 {
     /// <summary>
     /// Longest first, so Metadata/Critters/ is taken off before the bare Metadata/ that also matches it. The last one
-    /// is a catch-all for everything else a Match Any Entity rule can pick up - chests, doors, shrines - which are all
+    /// is a catch-all for everything else a Match any entity rule can pick up - chests, doors, shrines - which are all
     /// under Metadata/ too.
     /// </summary>
     private static readonly string[] CommonPrefixes = ["Metadata/Critters/", "Metadata/Monsters/", "Metadata/"];
