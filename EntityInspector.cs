@@ -82,9 +82,15 @@ internal sealed class EntityInspector
             if (ImGui.Button("Refresh"))
                 _snapshot = SnapshotOf(gameController);
 
+            // A label before the box, so a drag that overshoots the box's left edge stays over the window: off it, the
+            // HUD sends keys to the game and Delete stops working. A click selects all the text, so replacing it needs
+            // no drag at all.
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextUnformatted("Filter:");
+            ImGui.SameLine();
             ImGui.SetNextItemWidth(-1f);
-            ImGui.InputTextWithHint(
-                "##mmaEntityFilter", "Filter by metadata path, name, mod or buff", ref _filter, 200);
+            ImGui.InputTextWithHint("##mmaEntityFilter", "metadata path, name, mod or buff", ref _filter, 200,
+                ImGuiInputTextFlags.AutoSelectAll);
 
             var filter = _filter.Trim();
             var shown = _snapshot
