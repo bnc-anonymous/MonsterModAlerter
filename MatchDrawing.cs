@@ -325,7 +325,7 @@ internal sealed class MatchDrawing
             {
                 var text = entry.ModCount.ToString();
                 var size = _graphics.MeasureText(text);
-                var at = point + countSettings.OffsetFor(iconSize, size);
+                var at = point + countSettings.OffsetFor(rule, iconSize, size);
 
                 if (Overlaps(area, at, size))
                     DrawNumber(text, size, at, rule.ModCountColour.Value, countSettings);
@@ -385,8 +385,8 @@ internal sealed class MatchDrawing
                 var text = match.ModCount.ToString();
                 var size = _graphics.MeasureText(text);
                 var at = onMap
-                    ? placement.MapPoint + countSettings.OffsetFor(rule.MapIconSize.Value, size)
-                    : placement.ScreenPoint + countSettings.OffsetFor(rule.WorldIconSize.Value, size);
+                    ? placement.MapPoint + countSettings.OffsetFor(rule, rule.MapIconSize.Value, size)
+                    : placement.ScreenPoint + countSettings.OffsetFor(rule, rule.WorldIconSize.Value, size);
 
                 if (onMap ? Overlaps(area, at, size) : area.Contains(at.X, at.Y))
                     DrawNumber(text, size, at, rule.ModCountColour.Value, countSettings);

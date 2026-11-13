@@ -273,6 +273,21 @@ public class AlertRule : ISettings
     [ConditionalDisplay(nameof(ShowModCount))]
     public ColorNode ModCountColour { get; set; } = new(Color.White);
 
+    /// <summary>
+    /// Moves this rule's number right (X) and down (Y) by this many pixels from where Display's Mod count places it, on
+    /// the map and in the world, to line it up with this rule's icon by eye. Per rule, since where a number looks
+    /// centred depends on the icon. The number is centred by its text box, which is the font's whole line height, and
+    /// the HUD's font sits its digits low in that box (unifont at 16: digits at 4 to 14 of 16 pixels, read from the
+    /// font file).
+    /// </summary>
+    [Menu("Mod count X offset (px)")]
+    [ConditionalDisplay(nameof(ShowModCount))]
+    public RangeNode<int> ModCountOffsetX { get; set; } = new(0, -10, 10);
+
+    [Menu("Mod count Y offset (px)")]
+    [ConditionalDisplay(nameof(ShowModCount))]
+    public RangeNode<int> ModCountOffsetY { get; set; } = new(0, -10, 10);
+
     /// <summary>The same number over the monster in the world, beside its world icon, as well as on the map.</summary>
     [Menu("Draw mod count in world")]
     [ConditionalDisplay(nameof(ShowModCount))]
