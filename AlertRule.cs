@@ -73,23 +73,24 @@ public class AlertRule : ISettings
     public ToggleNode UseRegex { get; set; } = new(false);
 
     /// <summary>
-    /// Comma-separated parts of the entity's metadata path, e.g. Metadata/Monsters/BeehiveBehemoth, each matched as a
+    /// Comma-separated parts of the entity's metadata path, e.g. Metadata/Monsters/Breach, each matched as a
     /// case-insensitive substring. They are ORed, since they name alternatives rather than conditions that must all
     /// hold. Blank matches every entity.
     /// </summary>
     [Menu("Metadata paths",
         "Comma-separated parts of the metadata path; any one matches,\n" +
-        "e.g. Metadata/Monsters/BeehiveBehemoth. Blank matches all.")]
+        "e.g. Metadata/Monsters/Breach. Blank matches all.")]
     public TextNode MetadataPaths { get; set; } = new("");
 
     /// <summary>
     /// Comma-separated parts of the metadata path, matched as Metadata paths are, that keep an entity from matching
-    /// whatever else it matches. With Metadata paths it narrows them: Metadata/Monsters here and BeehiveBehemoth below
-    /// marks every monster but the beehives. Alone, it matches every entity except those it names.
+    /// whatever else it matches. With Metadata paths it narrows them: Metadata/Monsters there and
+    /// Metadata/Monsters/Breach here marks every monster but Breach's. Alone, it matches every entity except those it
+    /// names.
     /// </summary>
     [Menu("Excluded metadata paths",
         "Comma-separated parts of the metadata path; an entity on any\n" +
-        "of these never matches, e.g. Metadata/Monsters/BeehiveBehemoth.")]
+        "of these never matches, e.g. Metadata/Monsters/Breach.")]
     public TextNode ExcludedMetadataPaths { get; set; } = new("");
 
     /// <summary>
@@ -409,7 +410,7 @@ public class AlertRule : ISettings
 
     /// <summary>
     /// The rule's paths as its entry shows them: Metadata paths, then "not " and Excluded metadata paths, e.g.
-    /// "Metadata/Monsters but not BeehiveBehemoth".
+    /// "Metadata/Monsters but not Metadata/Monsters/Breach".
     /// </summary>
     public string DescribeMetadataPaths()
     {

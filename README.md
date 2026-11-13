@@ -2,6 +2,8 @@
 
 An ExileApi plugin for Path of Exile 1: marks monsters by their modifiers and buffs, with an icon on the map and in the world, and a sound.
 
+![The settings with an example group open, beside the large map marking rare monsters with icons, modifier counts and labels](images/1.jpg)
+
 ## Install
 
 Install using **PluginUpdater**: Add > paste this plugin's URL: `https://github.com/bnc-anonymous/MonsterModAlerter` > Clone
@@ -16,7 +18,7 @@ Each rule has a **Search term**, matched against the names of a monster's modifi
 
 - **Several terms**, separated by commas, must all be present: `mod1,mod2` marks only monsters carrying both.
 - **Use regex** treats each term as a regular expression: `MonsterMod.*Touched` matches every Touched modifier.
-- **Metadata paths** match the monster's metadata path, such as `Metadata/Monsters/BeehiveBehemoth`. A rule with metadata paths and no search term marks every monster on those paths. **Excluded metadata paths** keeps the monsters on those paths from matching: `Metadata/Monsters` in the first and `BeehiveBehemoth` in the second marks every monster but the beehives.
+- **Metadata paths** match the monster's metadata path, such as `Metadata/Monsters/Breach`. A rule with metadata paths and no search term marks every monster with that path. **Excluded metadata paths** keeps the monsters on those paths from matching: `Metadata/Monsters` in the first and `Metadata/Monsters/Breach` in the second marks every monster but Breach monsters.
 - **Monster rarity** sets which rarities of monster the rule matches, Normal, Magic, Rare and Unique: rare and unique by default.
 
 Each rule sets its own icon, tint and priority, its map icon, its world icon, box and label with their sizes and colours, and its sound. A rule's **Play sound** picks a sound from the HUD's `Sounds` folder, or None, the default; the **Sound** section sets the volume and the minimum time between sounds, or disables them all. A rule's settings that depend on a switch show only while it is on.
