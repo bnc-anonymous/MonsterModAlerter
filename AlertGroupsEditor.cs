@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using ExileCore;
 using ExileCore.Shared.Interfaces;
@@ -66,9 +65,6 @@ internal static class AlertGroupsEditor
             // Keyed by the object, not its index, so a header keeps its open state when the group moves.
             ImGui.PushID(RuntimeHelpers.GetHashCode(group));
 
-            if (g % 2 == 1)
-                RowBackground();
-
             ImGui.BeginGroup();
             DragHandle(GroupPayload, g, group.HeaderText);
             ImGui.SameLine();
@@ -94,9 +90,6 @@ internal static class AlertGroupsEditor
                 {
                     var rule = rules[r];
                     ImGui.PushID(RuntimeHelpers.GetHashCode(rule));
-
-                    if (r % 2 == 1)
-                        RowBackground();
 
                     ImGui.BeginGroup();
                     DragHandle(RulePayload, new RulePosition(g, r), rule.HeaderText);
@@ -156,18 +149,6 @@ internal static class AlertGroupsEditor
 
         if (groupToDelete is { } gd && gd < groups.Count)
             groups.RemoveAt(gd);
-    }
-
-    /// <summary>
-    /// The theme's alternate table row colour (ImGuiCol.TableRowBgAlt) across the row about to be drawn, for every
-    /// second group, and every second rule within a group, so the rows read apart. Drawn before the row, so the row
-    /// draws over it; one frame high, the height of the row's handle and checkbox.
-    /// </summary>
-    private static void RowBackground()
-    {
-        var min = ImGui.GetCursorScreenPos();
-        var max = new Vector2(min.X + ImGui.GetContentRegionAvail().X, min.Y + ImGui.GetFrameHeight());
-        ImGui.GetWindowDrawList().AddRectFilled(min, max, ImGui.GetColorU32(ImGuiCol.TableRowBgAlt));
     }
 
     /// <summary>The "=" handle a group or rule is dragged by, showing its name while dragged.</summary>
