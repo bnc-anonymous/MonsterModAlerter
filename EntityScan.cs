@@ -102,24 +102,26 @@ internal sealed class EntityScan
         if (monsters == null)
             return;
 
-        foreach (var entity in monsters)
+        try
         {
-            // An entity that cannot be read is skipped, not the whole scan.
-            if (entity != null)
-                Safe.Try(() => OfferMonster(entity));
-        }
-
-        if (anyEntityRules)
-        {
-            // Everything the game has loaded, monsters included - the monster list is a subset of it, which is why the
-            // ids already offered are skipped. Only entered when a rule asks for it, since this is the whole entity
-            // list rather than one bucket of it.
-            var all = Safe.Read(gameController, static g => g.EntityListWrapper.Entities, null);
-            AnyEntityWalkCount = all?.Count ?? 0;
-
-            if (all != null)
+            foreach (var entity in monsters)
             {
-                try
+                // An entity that cannot be read is skipped, not the whole scan.
+                if (entity != null)
+                    Safe.Try(() => OfferMonster(entity));
+            }
+
+            AnyEntityWalkCount = 0;
+
+            if (anyEntityRules)
+            {
+                // Everything the game has loaded, monsters included - the monster list is a subset of it, which is why
+                // the ids already offered are skipped. Only entered when a rule asks for it, since this is the whole
+                // entity list rather than one bucket of it.
+                var all = Safe.Read(gameController, static g => g.EntityListWrapper.Entities, null);
+                AnyEntityWalkCount = all?.Count ?? 0;
+
+                if (all != null)
                 {
                     foreach (var entity in all)
                     {
@@ -127,16 +129,14 @@ internal sealed class EntityScan
                             Safe.Try(() => OfferOther(entity));
                     }
                 }
-                catch (InvalidOperationException)
-                {
-                    // The HUD adds and removes entities on its own thread. If it did so mid-walk, this scan is simply
-                    // abandoned - the next one is 250ms away and will see the settled list.
-                }
             }
         }
-        else
+        catch (InvalidOperationException)
         {
-            AnyEntityWalkCount = 0;
+            // A list changed during its walk. The scan is abandoned and the last one stands: a part-walked list leaves
+            // entities out of loadedIds, and their remembered positions near the player would be forgotten. The next
+            // scan is one Scan Interval away.
+            return;
         }
 
         AnyEntityMatchCount = anyEntityMatches;
