@@ -25,7 +25,11 @@ internal static class Section
 
 public class MonsterModAlerterSettings : ISettings
 {
-    public MonsterModAlerterSettings() => ResetAllUi = new CustomNode(DrawResetAll);
+    public MonsterModAlerterSettings()
+    {
+        ResetAllUi = new CustomNode(DrawResetAll);
+        GroupsUi = new CustomNode(() => AlertGroupsEditor.Draw(this));
+    }
 
     /// <summary>
     /// The button at the top of the menu that puts every setting back to its default except Enable, and replaces the
@@ -59,15 +63,15 @@ public class MonsterModAlerterSettings : ISettings
     /// the example group by the plugin: ExileCore deserializes settings without ObjectCreationHandling.Replace, so a
     /// list filled here would be appended to on every load.
     /// </summary>
-    [Menu("Alert groups")]
-    public ContentNode<AlertGroup> Groups { get; set; } = new()
-    {
-        EnableControls = true,
-        EnableItemCollapsing = true,
-        ItemFactory = () => new AlertGroup(),
-        ItemFilter = (group, search) => group.Name.Value.Contains(search, StringComparison.OrdinalIgnoreCase),
-        Content = new List<AlertGroup>(),
-    };
+    [IgnoreMenu]
+    public ContentNode<AlertGroup> Groups { get; set; } = new() { Content = new List<AlertGroup>() };
+
+    /// <summary>
+    /// The Alert groups list, drawn by AlertGroupsEditor rather than as ExileCore's ContentNode list, so groups and
+    /// rules can be reordered by dragging. Made in the constructor because it needs the settings it draws.
+    /// </summary>
+    [JsonIgnore]
+    public CustomNode GroupsUi { get; set; }
 
     /// <summary>Every rule of every enabled group, in list order. The rules' own Enabled is not checked here.</summary>
     public IEnumerable<AlertRule> RulesOfEnabledGroups()

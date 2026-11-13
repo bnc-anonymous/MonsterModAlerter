@@ -5,6 +5,7 @@ using ExileCore;
 using ExileCore.Shared.Attributes;
 using ExileCore.Shared.Enums;
 using ExileCore.Shared.Helpers;
+using ExileCore.Shared.Interfaces;
 using ExileCore.Shared.Nodes;
 using ImGuiNET;
 using Newtonsoft.Json;
@@ -19,8 +20,7 @@ namespace MonsterModAlerter;
 /// label in the world, a modifier count and a sound. Settings that only matter when a switch is on are shown only then
 /// (ConditionalDisplay).
 /// </summary>
-[Submenu(CollapsedByDefault = true)]
-public class AlertRule
+public class AlertRule : ISettings
 {
     // Made here rather than in an initializer, so it is attached again after JSON deserialization.
     public AlertRule() => IconPicker = new IconPickerNode(this);
@@ -32,8 +32,16 @@ public class AlertRule
         Icon = MapIconsIndex.CorpseTypeUndead,
     };
 
-    [Menu("Enabled")]
+    /// <summary>Drawn on the rule's header by AlertGroupsEditor, not among its settings.</summary>
+    [IgnoreMenu]
     public ToggleNode Enabled { get; set; } = new(true);
+
+    /// <summary>For SettingsParser, which draws the rule's settings and wants an ISettings; not saved.</summary>
+    ToggleNode ISettings.Enable
+    {
+        get => Enabled;
+        set => Enabled = value;
+    }
 
     /// <summary>
     /// Matched as a case-insensitive substring of the monster's mod and buff names (Search mods and Search buffs,
@@ -461,29 +469,32 @@ public class AlertRule
         }
     }
 
-    /// <summary>
-    /// The rule's entry in the list. The trailing ### keeps ImGui's id stable while the text changes.
-    /// </summary>
-    public override string ToString()
+    /// <summary>The rule's header: its search term, or its metadata paths, and "(disabled)" in front when off.</summary>
+    public string HeaderText
     {
-        // A rule with no term is valid when Metadata paths carry it, so name those instead of reporting the rule as
-        // incomplete.
-        var term = string.IsNullOrWhiteSpace(SearchTerm?.Value)
-            ? (HasMetadataPaths ? DescribeMetadataPaths() : "<no term>")
-            : SearchTerm.Value;
+        get
+        {
+            // A rule with no term is valid when Metadata paths carry it, so name those instead of reporting the rule as
+            // incomplete.
+            var term = string.IsNullOrWhiteSpace(SearchTerm?.Value)
+                ? (HasMetadataPaths ? DescribeMetadataPaths() : "<no term>")
+                : SearchTerm.Value;
 
-        // A rule that cannot compile its pattern matches nothing, which is indistinguishable from "no such monster
-        // here" unless it is said.
-        if (PatternError != null)
-            term = $"{term}  [BAD REGEX]";
+            // A rule that cannot compile its pattern matches nothing, which is indistinguishable from "no such monster
+            // here" unless it is said.
+            if (PatternError != null)
+                term = $"{term}  [BAD REGEX]";
 
-        // A rule not restricted to monsters behaves differently enough - no Monster rarity, and it searches the
-        // metadata path - that the list says so without opening it.
-        if (AnyEntity?.Value == true)
-            term = $"[any] {term}";
+            // A rule not restricted to monsters behaves differently enough - no Monster rarity, and it searches the
+            // metadata path - that the header says so without opening it.
+            if (AnyEntity?.Value == true)
+                term = $"[any] {term}";
 
-        return $"{(Enabled?.Value == true ? "" : "(disabled) ")}{term}###";
+            return $"{(Enabled?.Value == true ? "" : "(disabled) ")}{term}";
+        }
     }
+
+    public override string ToString() => HeaderText;
 
     /// <summary>
     /// The icon button and picker. Uses ExileCore's own IconButton and IconPickerWindow, the ones MinimapIcons uses, so
