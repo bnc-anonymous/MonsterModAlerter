@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using ExileCore.Shared.Attributes;
 using ExileCore.Shared.Interfaces;
 using ExileCore.Shared.Nodes;
+using Newtonsoft.Json;
 
 namespace MonsterModAlerter;
 
@@ -44,6 +45,8 @@ public class AlertGroup : ISettings
     public ContentNode<AlertRule> Rules { get; set; } = new() { Content = new List<AlertRule>() };
 
     /// <summary>The group's header: its name, "(disabled)" in front when off.</summary>
+    [JsonIgnore]
+    [IgnoreMenu]
     public string HeaderText
     {
         get

@@ -74,6 +74,11 @@ internal static class AlertGroupsEditor
                     if (ruleOpen)
                     {
                         ImGui.Indent();
+
+                        // A ListNode's choices are not saved, so they are supplied before it is drawn.
+                        if (!ReferenceEquals(rule.PlaySound.Values, AlertSound.SoundNames))
+                            rule.PlaySound.Values = AlertSound.SoundNames;
+
                         DrawSettingsOf(rule);
 
                         if (CtrlButton("Delete rule"))
@@ -157,7 +162,9 @@ internal static class AlertGroupsEditor
             ImGui.SetTooltip("Enabled");
     }
 
-    /// <summary>A button clickable only while Ctrl is held, as the reset button is, so a stray click cannot delete.</summary>
+    /// <summary>
+    /// A button clickable only while Ctrl is held, as the reset button is, so a stray click cannot delete.
+    /// </summary>
     private static bool CtrlButton(string label)
     {
         var armed = ImGui.GetIO().KeyCtrl;

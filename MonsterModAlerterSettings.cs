@@ -300,23 +300,46 @@ public class SeenTallySettings
     }
 }
 
-/// <summary>The alert sound. Each rule turns it on with Play sound and names its file. See AlertSound.</summary>
+/// <summary>The alert sound, for every rule. Each rule picks its own sound, or none. See AlertSound.</summary>
 public class SoundSettings
 {
-    [Menu("Enable")]
-    public ToggleNode Enable { get; set; } = new(true);
+    public SoundSettings() => PlayTestUi = new CustomNode(DrawPlayTest);
 
-    /// <summary>The shortest time between two sounds, loop repeats included.</summary>
-    [Menu("Cooldown (ms)")]
-    public RangeNode<int> CooldownMs { get; set; } = new(800, 100, 30000);
+    [Menu("Disable all sounds")]
+    public ToggleNode DisableAllSounds { get; set; } = new(false);
 
     /// <summary>
-    /// On: the sound plays again every cooldown while a matching monster is alive. Off: each monster is announced once.
+    /// The volume of every rule's sound: 100 plays it as recorded, above 100 louder, clipped where a sample would
+    /// overflow, as Autoloot's Sound volume.
+    /// </summary>
+    [Menu("Volume (%)")]
+    public RangeNode<int> Volume { get; set; } = new(100, 0, 300);
+
+    /// <summary>Plays the default sound at Volume, to hear it.</summary>
+    [JsonIgnore]
+    public CustomNode PlayTestUi { get; set; }
+
+    /// <summary>
+    /// After any sound plays, no other plays for this long, whichever rule matched: one timer for every match. With
+    /// Loop while alive on it is also how often the sound repeats.
+    /// </summary>
+    [Menu("Minimum time between sounds (ms)", "Also how often a sound repeats with Loop while alive.")]
+    public RangeNode<int> MinimumTimeBetweenSoundsMs { get; set; } = new(800, 0, 3000);
+
+    /// <summary>
+    /// On: the sound plays again after every Minimum time between sounds while a matching monster is alive. Off: each
+    /// monster is announced once.
     /// </summary>
     [Menu("Loop while alive",
-        "Play again every cooldown while a matching monster lives,\n" +
+        "Play again after every minimum time while a matching monster lives,\n" +
         "rather than once per monster.")]
     public ToggleNode LoopWhileAlive { get; set; } = new(false);
+
+    private void DrawPlayTest()
+    {
+        if (ImGui.Button("Play test sound###mmaPlayTestSound"))
+            AlertSound.PlayTest(Volume.Value);
+    }
 }
 
 public class DebugSettings

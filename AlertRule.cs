@@ -248,7 +248,7 @@ public class AlertRule : ISettings
     /// monster with Fire Touched and Cold Touched reads 2. Buffs count only with Search buffs on. Ignored without a
     /// search term, which counts rare modifiers. Shown while the count is shown or gates the rule (Mod count minimum).
     /// </summary>
-    [Menu("Count search matches", "Count the mods and buffs the search term matches instead.")]
+    [Menu("Count search matches instead of mod count")]
     [ConditionalDisplay(nameof(UsesModCount))]
     public ToggleNode CountSearchMatches { get; set; } = new(false);
 
@@ -281,15 +281,12 @@ public class AlertRule : ISettings
     [JsonIgnore]
     public CustomNode SoundGroup { get; set; } = Section.Of("Sound");
 
-    [Menu("Play sound")]
-    public ToggleNode PlaySound { get; set; } = new(true);
-
     /// <summary>
-    /// A file in the HUD's Sounds folder, named without its extension; "attention" is the spoken warning.
+    /// The .wav from the HUD's Sounds folder played when this rule matches, or None. The choices are filled in by
+    /// AlertGroupsEditor from AlertSound.SoundNames, since a ListNode's choices are not saved.
     /// </summary>
-    [Menu("Sound file", "A file in the HUD's Sounds folder, without its extension.")]
-    [ConditionalDisplay(nameof(PlaySound))]
-    public TextNode SoundFile { get; set; } = new("attention");
+    [Menu("Play sound")]
+    public ListNode PlaySound { get; set; } = new() { Value = AlertSound.Default };
 
     /// <summary>Whether this rule matches a monster of this rarity (Monster rarity).</summary>
     public bool AllowsRarity(MonsterRarity rarity) => rarity switch
@@ -300,6 +297,11 @@ public class AlertRule : ISettings
         MonsterRarity.Unique => UniqueMonsters,
         _ => false,
     };
+
+    /// <summary>Whether Play sound names a sound rather than None.</summary>
+    [JsonIgnore]
+    [IgnoreMenu]
+    public bool HasSound => !string.IsNullOrWhiteSpace(PlaySound?.Value) && PlaySound.Value != AlertSound.None;
 
     // Conditions for ConditionalDisplay above. Not settings: neither saved nor drawn.
 
@@ -469,7 +471,11 @@ public class AlertRule : ISettings
         }
     }
 
-    /// <summary>The rule's header: its search term, or its metadata paths, and "(disabled)" in front when off.</summary>
+    /// <summary>
+    /// The rule's header: its search term, or its metadata paths, and "(disabled)" in front when off.
+    /// </summary>
+    [JsonIgnore]
+    [IgnoreMenu]
     public string HeaderText
     {
         get

@@ -126,7 +126,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         _scanTimer.Restart();
         _scan.Run(GameController, Settings);
-        _sound.PlayIfDue(GameController, Settings.Sound, _scan.Matches);
+        _sound.PlayIfDue(Settings.Sound, _scan.Matches);
         return null;
     }
 
