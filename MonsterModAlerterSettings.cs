@@ -236,6 +236,18 @@ public class ModCountSettings
     [Menu("Gap from icon (px)")]
     public RangeNode<int> Gap { get; set; } = new(2, 0, 40);
 
+    /// <summary>
+    /// Moves the number right (X) and down (Y) by this many pixels after Position has placed it, on the map and in the
+    /// world. For lining it up with the icon by eye: the number is centred by its text box, which is the font's whole
+    /// line height, and the HUD's font sits its digits low in that box (unifont at 16: digits 4 to 14 of 16 pixels,
+    /// read from the font file).
+    /// </summary>
+    [Menu("X offset (px)")]
+    public RangeNode<int> OffsetX { get; set; } = new(0, -10, 10);
+
+    [Menu("Y offset (px)")]
+    public RangeNode<int> OffsetY { get; set; } = new(0, -10, 10);
+
     [Menu("Text scale")]
     public RangeNode<float> TextScale { get; set; } = new(1.0f, 0.5f, 3.0f);
 
@@ -259,13 +271,14 @@ public class ModCountSettings
     public ColorNode BackgroundColour { get; set; } = new(new Color(0, 0, 0, 200));
 
     /// <summary>
-    /// Offset from the monster's position that puts the number beside an icon of the given size, rather than under it.
+    /// Offset from the monster's position to the number's centre: beside an icon of the given size, or on it, as
+    /// Position says, then moved by X offset and Y offset.
     /// </summary>
     public Vector2N OffsetFor(float iconSize, Vector2N textSize)
     {
         var pad = iconSize / 2f + Gap.Value;
 
-        return Position.Value switch
+        var placed = Position.Value switch
         {
             LeftOfIcon => new Vector2N(-pad - textSize.X / 2f, 0),
             AboveIcon => new Vector2N(0, -pad - textSize.Y / 2f),
@@ -273,6 +286,8 @@ public class ModCountSettings
             CentredOnIcon => Vector2N.Zero,
             _ => new Vector2N(pad + textSize.X / 2f, 0),
         };
+
+        return placed + new Vector2N(OffsetX.Value, OffsetY.Value);
     }
 }
 
