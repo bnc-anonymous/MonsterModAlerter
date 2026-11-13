@@ -81,10 +81,10 @@ internal sealed class EntityScan
             if (rule.AnyEntity?.Value == true)
                 continue;
 
-            acceptsNormal |= rule.Rarity.Normal;
-            acceptsMagic |= rule.Rarity.Magic;
-            acceptsRare |= rule.Rarity.Rare;
-            acceptsUnique |= rule.Rarity.Unique;
+            acceptsNormal |= rule.NormalMonsters;
+            acceptsMagic |= rule.MagicMonsters;
+            acceptsRare |= rule.RareMonsters;
+            acceptsUnique |= rule.UniqueMonsters;
         }
 
         // Whether anything is asking to see past the monster list at all. When nothing is, the second walk below never

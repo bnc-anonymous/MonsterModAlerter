@@ -358,36 +358,3 @@ public class DebugSettings
         }
     }
 }
-
-/// <summary>Which monster rarities a rule matches.</summary>
-[Submenu(CollapsedByDefault = false)]
-public class RarityFilterSettings
-{
-    [Menu("Normal")]
-    public ToggleNode Normal { get; set; } = new(true);
-
-    [Menu("Magic")]
-    public ToggleNode Magic { get; set; } = new(true);
-
-    [Menu("Rare")]
-    public ToggleNode Rare { get; set; } = new(true);
-
-    [Menu("Unique")]
-    public ToggleNode Unique { get; set; } = new(true);
-
-    /// <summary>The default for new rules: rare and unique monsters only.</summary>
-    public static RarityFilterSettings RareAndUnique() => new()
-    {
-        Normal = new ToggleNode(false),
-        Magic = new ToggleNode(false),
-    };
-
-    public bool Allows(MonsterRarity rarity) => rarity switch
-    {
-        MonsterRarity.White => Normal,
-        MonsterRarity.Magic => Magic,
-        MonsterRarity.Rare => Rare,
-        MonsterRarity.Unique => Unique,
-        _ => false,
-    };
-}

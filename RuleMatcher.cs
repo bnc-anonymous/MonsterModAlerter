@@ -61,8 +61,8 @@ internal sealed class RuleMatcher
     /// entity.
     /// </summary>
     /// <param name="monsterOk">
-    /// Whether this entity qualifies as a monster this scan: hostile, alive and past the global rarity filter. Rules
-    /// that were not asked to look further than monsters are skipped when it is false.
+    /// Whether this entity qualifies as a monster this scan: hostile, alive and of a rarity some monster rule accepts.
+    /// Rules that were not asked to look further than monsters are skipped when it is false.
     /// </param>
     /// <param name="anyOk">Whether Match any entity rules should be offered this entity.</param>
     public RuleMatch BestMatchOf(Entity entity, bool monsterOk, bool anyOk, bool checkAlive)
@@ -125,7 +125,7 @@ internal sealed class RuleMatcher
             // Per-rule rarity intersects with the global filter, so a rule can only narrow it. Skipped alongside the
             // global one for a rule that is not asking for monsters, for the same reason: a chest has no rarity to
             // pass.
-            if (!anyEntity && !rule.Rarity.Allows(entity.Rarity))
+            if (!anyEntity && !rule.AllowsRarity(entity.Rarity))
                 continue;
 
             // Already holding something this rule cannot outrank. Skipped when collecting every match, where losing on

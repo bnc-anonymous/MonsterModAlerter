@@ -88,23 +88,15 @@ public class AlertRule
     public ToggleNode ExcludeMetadataPaths { get; set; } = new(false);
 
     /// <summary>
-    /// Off: the rule sees only hostile monsters, and its rarity filter applies. On: it is tested against every loaded
-    /// entity with a position - critters, chests, doors, shrines - with the hostile check and the rarity filter
-    /// skipped, and its terms also search the metadata path, since most such entities carry neither mods nor buffs.
+    /// Off: the rule sees only hostile monsters, and Monster rarity applies. On: it is tested against every loaded
+    /// entity with a position - critters, chests, doors, shrines - with the hostile check and Monster rarity skipped,
+    /// and its terms also search the metadata path, since most such entities carry neither mods nor buffs.
     /// "Metadata/Critters" then marks every critter.
     /// </summary>
     [Menu("Match any entity",
         "Test every loaded entity, not only hostile monsters, and search\n" +
-        "its metadata path too. The rarity filter does not apply.")]
+        "its metadata path too. Monster rarity does not apply.")]
     public ToggleNode AnyEntity { get; set; } = new(false);
-
-    /// <summary>
-    /// The rarities of monster this rule matches. Not applied, nor shown, with Match any entity on: a chest has no
-    /// rarity.
-    /// </summary>
-    [Menu("Monster rarity filter")]
-    [ConditionalDisplay(nameof(AnyEntity), false)]
-    public RarityFilterSettings Rarity { get; set; } = RarityFilterSettings.RareAndUnique();
 
     /// <summary>
     /// Higher is drawn on top among this plugin's icons. With Draw multiple matching icons off, only the
@@ -115,6 +107,30 @@ public class AlertRule
         "Higher draws on top. With Draw multiple matching icons off, only\n" +
         "the highest-priority rule matching a monster is shown.")]
     public RangeNode<int> Priority { get; set; } = new(0, -100, 100);
+
+    /// <summary>
+    /// The rarities of monster this rule matches; rare and unique for a new rule. Not applied, nor shown, with Match
+    /// any entity on: a chest has no rarity.
+    /// </summary>
+    [JsonIgnore]
+    [ConditionalDisplay(nameof(AnyEntity), false)]
+    public CustomNode MonsterRarityGroup { get; set; } = Section.Of("Monster rarity");
+
+    [Menu("Normal")]
+    [ConditionalDisplay(nameof(AnyEntity), false)]
+    public ToggleNode NormalMonsters { get; set; } = new(false);
+
+    [Menu("Magic")]
+    [ConditionalDisplay(nameof(AnyEntity), false)]
+    public ToggleNode MagicMonsters { get; set; } = new(false);
+
+    [Menu("Rare")]
+    [ConditionalDisplay(nameof(AnyEntity), false)]
+    public ToggleNode RareMonsters { get; set; } = new(true);
+
+    [Menu("Unique")]
+    [ConditionalDisplay(nameof(AnyEntity), false)]
+    public ToggleNode UniqueMonsters { get; set; } = new(true);
 
     [JsonIgnore]
     public CustomNode IconGroup { get; set; } = Section.Of("Icon");
@@ -266,6 +282,16 @@ public class AlertRule
     [Menu("Sound file", "A file in the HUD's Sounds folder, without its extension.")]
     [ConditionalDisplay(nameof(PlaySound))]
     public TextNode SoundFile { get; set; } = new("attention");
+
+    /// <summary>Whether this rule matches a monster of this rarity (Monster rarity).</summary>
+    public bool AllowsRarity(MonsterRarity rarity) => rarity switch
+    {
+        MonsterRarity.White => NormalMonsters,
+        MonsterRarity.Magic => MagicMonsters,
+        MonsterRarity.Rare => RareMonsters,
+        MonsterRarity.Unique => UniqueMonsters,
+        _ => false,
+    };
 
     // Conditions for ConditionalDisplay above. Not settings: neither saved nor drawn.
 
@@ -451,8 +477,8 @@ public class AlertRule
         if (PatternError != null)
             term = $"{term}  [BAD REGEX]";
 
-        // A rule not restricted to monsters behaves differently enough - no rarity filter, and it searches the metadata
-        // path - that the list says so without opening it.
+        // A rule not restricted to monsters behaves differently enough - no Monster rarity, and it searches the
+        // metadata path - that the list says so without opening it.
         if (AnyEntity?.Value == true)
             term = $"[any] {term}";
 

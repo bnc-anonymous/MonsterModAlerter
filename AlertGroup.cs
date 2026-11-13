@@ -41,7 +41,9 @@ public class AlertGroup
         Content = new List<AlertRule>(),
     };
 
-    /// <summary>The group's entry in the list. The trailing ### keeps ImGui's id stable while the text changes.</summary>
+    /// <summary>
+    /// The group's entry in the list. The trailing ### keeps ImGui's id stable while the text changes.
+    /// </summary>
     public override string ToString()
     {
         var name = string.IsNullOrWhiteSpace(Name?.Value) ? "<no name>" : Name.Value;
