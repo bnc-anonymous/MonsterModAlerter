@@ -207,10 +207,11 @@ public class ScanSettings
 public class DisplaySettings
 {
     /// <summary>
-    /// Map icons and counts are drawn on the large map only, not the minimap. World drawing is unaffected.
+    /// Map icons and counts on the corner map, ExileCore's SmallMiniMap, as well as the large map, clipped to the
+    /// corner map's square (MatchDrawing.MapAreaOf). Off by default. World drawing is unaffected.
     /// </summary>
-    [Menu("Draw only on large map", "Map icons and counts skip the minimap.")]
-    public ToggleNode DrawOnlyOnLargeMap { get; set; } = new(false);
+    [Menu("Enable drawing on the corner map", "Map icons and counts on the corner map as well as the large map.")]
+    public ToggleNode EnableDrawingOnCornerMap { get; set; } = new(false);
 
     /// <summary>
     /// With an inventory or stash panel open, the drawable area shrinks to the part of the window it leaves uncovered,

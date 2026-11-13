@@ -96,7 +96,7 @@ public class AlertRule
     public ColorNode Tint { get; set; } = new(Color.White);
 
     /// <summary>
-    /// On the minimap and the large map; Display's Draw only on large map can narrow that to the large map.
+    /// On the large map, and on the corner map with Display's Enable drawing on the corner map on.
     /// </summary>
     [Menu("Show on map")]
     public ToggleNode ShowOnMap { get; set; } = new(true);

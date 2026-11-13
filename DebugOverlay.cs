@@ -11,7 +11,7 @@ namespace MonsterModAlerter;
 
 /// <summary>
 /// The debug overlay: what the scan and the draw path decided this frame, written top-left, so an invisible icon can be
-/// told apart from a wrongly-sized one without guessing.
+/// told apart from a wrongly-sized one without guessing. The map area map drawing is limited to is framed in cyan.
 /// </summary>
 internal sealed class DebugOverlay
 {
@@ -31,9 +31,12 @@ internal sealed class DebugOverlay
 
     public void Draw(
         GameController gameController, MonsterModAlerterSettings settings, EntityScan scan, SeenTally tally,
-        List<RuleMatch> matches, RectangleF region, IngameUIElements ingameUi, bool minimapVisible)
+        List<RuleMatch> matches, RectangleF region, IngameUIElements ingameUi, RectangleF? mapArea)
     {
         _lineY = Top;
+
+        if (mapArea is { } framed)
+            _graphics.DrawFrame(framed, Color.Cyan, 1);
 
         var outOfRange = scan.OutOfRange;
 
@@ -66,10 +69,15 @@ internal sealed class DebugOverlay
                 nearest <= radius ? Color.Orange : Color.White);
         }
 
-        WriteLine($"smallMap={ingameUi.Map.SmallMiniMap.IsVisibleLocal}  " +
+        var cornerMap = ingameUi.Map.SmallMiniMap.GetClientRectCache;
+        WriteLine($"cornerMap={ingameUi.Map.SmallMiniMap.IsVisibleLocal} " +
+                  $"({cornerMap.X:0},{cornerMap.Y:0} {cornerMap.Width:0}x{cornerMap.Height:0})  " +
                   $"largeMap={ingameUi.Map.LargeMap.IsVisibleLocal}  " +
-                  $"minimapVisible={minimapVisible}  onlyLarge={settings.Display.DrawOnlyOnLargeMap.Value}",
-            minimapVisible ? Color.LightGreen : Color.Orange);
+                  $"cornerMapDrawing={settings.Display.EnableDrawingOnCornerMap.Value}  " +
+                  (mapArea is { } area
+                      ? $"mapArea=({area.X:0},{area.Y:0} {area.Width:0}x{area.Height:0})"
+                      : "mapArea=none"),
+            mapArea != null ? Color.LightGreen : Color.Orange);
         WriteLine($"region=({region.Left:0},{region.Top:0})-({region.Right:0},{region.Bottom:0})  " +
                   $"limit={settings.Display.LimitDrawRegion.Value}", Color.White);
 
@@ -81,13 +89,13 @@ internal sealed class DebugOverlay
         {
             var gridPos = match.Entity.GridPosNum;
             var point = _graphics.GridToMap(gridPos, gridPos);
-            var inRegion = region.Contains(point.X, point.Y);
+            var inMapArea = mapArea?.Contains(point.X, point.Y) == true;
 
             WriteLine($"  '{match.Rule.SearchTerm.Value}' icon={match.Rule.Icon} " +
                       $"mapSize={match.Rule.MapIconSize.Value} " +
                       $"worldSize={match.Rule.WorldIconSize.Value} showMap={match.Rule.ShowOnMap.Value} " +
-                      $"mapPos=({point.X:0},{point.Y:0}) inRegion={inRegion}",
-                inRegion && minimapVisible && match.Rule.ShowOnMap ? Color.LightGreen : Color.Orange);
+                      $"mapPos=({point.X:0},{point.Y:0}) inMapArea={inMapArea}",
+                inMapArea && match.Rule.ShowOnMap ? Color.LightGreen : Color.Orange);
 
             if (ReferenceEquals(match, firstShowingModCount))
                 WriteModBreakdown(match);

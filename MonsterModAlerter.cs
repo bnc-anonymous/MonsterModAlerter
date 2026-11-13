@@ -193,20 +193,17 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         var region = Safe.Read((GameController, Ui: ingameUi, Limit: display.LimitDrawRegion.Value),
             static s => MatchDrawing.DrawRegionOf(s.GameController, s.Ui, s.Limit), default);
 
-        var largeMapVisible = Safe.Read(ingameUi, static ui => ui.Map.LargeMap.IsVisibleLocal, false);
-        var minimapVisible = display.DrawOnlyOnLargeMap
-            ? largeMapVisible
-            : largeMapVisible || Safe.Read(ingameUi, static ui => ui.Map.SmallMiniMap.IsVisibleLocal, false);
+        var mapArea = MatchDrawing.MapAreaOf(ingameUi, region, display.EnableDrawingOnCornerMap);
 
         if (matches.Count > 0 || outOfRange.Count > 0)
-            _matchDrawing.Draw(GameController, Settings, matches, outOfRange, region, minimapVisible);
+            _matchDrawing.Draw(GameController, Settings, matches, outOfRange, region, mapArea);
 
         // Drawn when nothing matched as well: that is exactly the state the overlay is opened to explain. Guarded as a
         // whole: it reads freely, and a throw part-way only cuts this frame's text short.
         if (Settings.Debug.ShowOverlay)
         {
             Safe.Try(() => _debugOverlay.Draw(
-                GameController, Settings, _scan, _tally, matches, region, ingameUi, minimapVisible));
+                GameController, Settings, _scan, _tally, matches, region, ingameUi, mapArea));
         }
     }
 }
