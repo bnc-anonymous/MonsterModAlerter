@@ -17,12 +17,13 @@ namespace MonsterModAlerter;
 /// read-only text fields that can be selected and copied with Ctrl+C. Opened from the button at the top of the
 /// settings.
 ///
-/// After DevTree's window of the same name: the list is a snapshot, taken when the window opens and by Refresh, so the
-/// rows do not reorder under the mouse as distances change. Hovering an entity's row or details marks it in the world
-/// with DevTree's hovered pin - a disc at its feet, a stalk and its name above - and a line to it from the player, for
-/// one off screen. The game's own outline of a hovered monster cannot be had: the game draws it for the entity under
-/// the mouse, and setting that would mean writing to the game's memory. The bounding box ExileCore can draw
-/// (Render.BoundsNum) was tried and covered the tile rather than the monster (seen in game, 2026-11-13).
+/// After DevTree's window of the same name, its rows titled as DevTree titles them: the list is a snapshot, taken when
+/// the window opens and by Refresh, so the rows do not reorder under the mouse as distances change. Hovering an
+/// entity's row or details marks it in the world with DevTree's hovered pin - a disc at its feet, a stalk and its name
+/// above - and a line to it from the player, for one off screen. The game's own outline of a hovered monster cannot be
+/// had: the game draws it for the entity under the mouse, and setting that would mean writing to the game's memory. The
+/// bounding box ExileCore can draw (Render.BoundsNum) was tried and covered the tile rather than the monster (seen in
+/// game, 2026-11-13).
 ///
 /// The filter matches a word in the metadata path, the name, a mod or a buff, ignoring case.
 /// </summary>
@@ -107,6 +108,11 @@ internal sealed class EntityInspector
 
             if (ImGui.BeginChild("##mmaEntities"))
             {
+                // An entity's number is its place in the snapshot, as in DevTree, so filtering does not renumber rows.
+                var indexInSnapshot = new Dictionary<Entity, int>(_snapshot.Count);
+                for (var i = 0; i < _snapshot.Count; i++)
+                    indexInSnapshot[_snapshot[i]] = i;
+
                 foreach (var entity in shown)
                 {
                     ImGui.PushID((int)Safe.Read(entity, static e => e.Id, 0u));
@@ -114,7 +120,8 @@ internal sealed class EntityInspector
                     // The row and its details as one group, so hovering either highlights the entity.
                     ImGui.BeginGroup();
 
-                    if (ImGui.TreeNodeEx($"{LabelOf(entity)}###entity", ImGuiTreeNodeFlags.SpanAvailWidth))
+                    if (ImGui.TreeNodeEx($"{LabelOf(entity, indexInSnapshot[entity])}###entity",
+                            ImGuiTreeNodeFlags.SpanAvailWidth))
                     {
                         DrawDetailsOf(entity);
                         ImGui.TreePop();
@@ -182,15 +189,20 @@ internal sealed class EntityInspector
     }
 
     /// <summary>
-    /// The row's title: the short metadata path, the rarity for a monster, the distance, and (gone) if gone.
+    /// The row's title, exactly as DevTree's entity list writes it: "[index] ", then the entity's own ToString(), then
+    /// its address in hex in square brackets unless the text already holds it (DevTree.DebugCollectionCore, with its
+    /// Hide addresses setting at its default, off).
     /// </summary>
-    private static string LabelOf(Entity entity) => Safe.Read(entity, static e =>
+    private static string LabelOf(Entity entity, int index)
     {
-        var path = e.Path ?? "";
-        var rarity = path.StartsWith(MonsterPathPrefix, StringComparison.OrdinalIgnoreCase) ? $"  {e.Rarity}" : "";
-        var gone = e.IsValid ? "" : "  (gone)";
-        return $"{MetadataPaths.ShortNameOf(MetadataPaths.WithoutLevelTag(path))}{rarity}  {e.DistancePlayer:0}{gone}";
-    }, "<unreadable>");
+        var text = Safe.Read(entity, static e => e.ToString(), null) ?? "ToString(): <exception thrown>";
+        var address = $"{Safe.Read(entity, static e => e.Address, 0L):X}";
+
+        if (!text.Contains(address))
+            text += $" [{address}]";
+
+        return $"[{index}] {text}";
+    }
 
     private static void DrawDetailsOf(Entity entity)
     {
@@ -225,18 +237,17 @@ internal sealed class EntityInspector
     }
 
     /// <summary>
-    /// A label and a read-only text box of one entry per line, up to ten lines high, then it scrolls.
+    /// A label and a read-only text box of one entry per line, one to ten lines high, then it scrolls.
     /// </summary>
     /// <param name="id">The text box's ImGui id, fixed, since the label carries a count that changes.</param>
     private static void CopyableLines(string id, string label, List<string> lines)
     {
         ImGui.TextUnformatted(label);
 
-        if (lines.Count == 0)
-            return;
-
+        // An empty list still gets its box, one line high, so every entity's details have the same shape.
         var text = string.Join("\n", lines);
-        var height = ImGui.GetTextLineHeight() * Math.Min(lines.Count, 10) + ImGui.GetStyle().FramePadding.Y * 2f + 2f;
+        var height = ImGui.GetTextLineHeight() * Math.Clamp(lines.Count, 1, 10) +
+                     ImGui.GetStyle().FramePadding.Y * 2f + 2f;
         ImGui.InputTextMultiline($"##{id}", ref text, (uint)text.Length + 1, new Vector2(-1f, height),
             ImGuiInputTextFlags.ReadOnly);
     }
