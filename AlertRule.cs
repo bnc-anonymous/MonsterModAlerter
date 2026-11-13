@@ -287,11 +287,11 @@ public class AlertRule : ISettings
     public CustomNode SoundGroup { get; set; } = Section.Of("Sound");
 
     /// <summary>
-    /// The .wav from the HUD's Sounds folder played when this rule matches, or None. The choices are filled in by
-    /// AlertGroupsEditor from AlertSound.SoundNames, since a ListNode's choices are not saved.
+    /// The .wav from the HUD's Sounds folder played when this rule matches, or None, the default. The choices are
+    /// filled in by AlertGroupsEditor from AlertSound.SoundNames, since a ListNode's choices are not saved.
     /// </summary>
     [Menu("Play sound")]
-    public ListNode PlaySound { get; set; } = new() { Value = AlertSound.Default };
+    public ListNode PlaySound { get; set; } = new() { Value = AlertSound.None };
 
     /// <summary>Whether this rule matches a monster of this rarity (Monster rarity).</summary>
     public bool AllowsRarity(MonsterRarity rarity) => rarity switch

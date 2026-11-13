@@ -19,7 +19,7 @@ Each rule has a **Search term**, matched against the names of a monster's modifi
 - **Metadata paths** match the monster's metadata path, such as `Metadata/Monsters/BeehiveBehemoth`. A rule with metadata paths and no search term marks every monster on those paths; **Exclude metadata paths** marks every monster except those.
 - **Monster rarity** sets which rarities of monster the rule matches, Normal, Magic, Rare and Unique: rare and unique by default.
 
-Each rule sets its own icon, tint and priority, its map icon, its world icon, box and label with their sizes and colours, and its sound. A rule's **Play sound** picks a sound from the HUD's `Sounds` folder, or None; the **Sound** section sets the volume and the minimum time between sounds, or disables them all. A rule's settings that depend on a switch show only while it is on.
+Each rule sets its own icon, tint and priority, its map icon, its world icon, box and label with their sizes and colours, and its sound. A rule's **Play sound** picks a sound from the HUD's `Sounds` folder, or None, the default; the **Sound** section sets the volume and the minimum time between sounds, or disables them all. A rule's settings that depend on a switch show only while it is on.
 
 ## More per rule
 

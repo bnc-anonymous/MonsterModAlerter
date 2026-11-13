@@ -18,8 +18,8 @@ internal sealed class AlertSound
     /// <summary>A rule's Play sound that plays nothing.</summary>
     public const string None = "None";
 
-    /// <summary>A new rule's sound: the HUD's spoken warning.</summary>
-    public const string Default = "attention";
+    /// <summary>The test sound picker's first choice: the HUD's spoken warning. A new rule's sound is None.</summary>
+    public const string DefaultTestSound = "attention";
 
     private static readonly Dictionary<string, byte[]> WavByName = new(StringComparer.OrdinalIgnoreCase);
     private static List<string> _soundNames;

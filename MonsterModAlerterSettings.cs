@@ -374,7 +374,7 @@ public class SoundSettings
     public ToggleNode LoopWhileAlive { get; set; } = new(false);
 
     /// <summary>The sound the test button plays. Only for listening, so not saved.</summary>
-    private string _testSound = AlertSound.Default;
+    private string _testSound = AlertSound.DefaultTestSound;
 
     private void DrawPlayTest()
     {
