@@ -172,10 +172,9 @@ public class DisplaySettings
     /// </summary>
     [Menu("Render order",
         "Plugins draw in this order, lowest first, so a higher value draws\n" +
-        "this plugin over the others. MinimapIcons, for example, draws at\n" +
-        "0, so at the default of 15000 these icons go over its own.\n" +
+        "later, over the others. MinimapIcons, for example, draws at 0.\n" +
         "\n" +
-        "Read when the HUD loads the plugin.")]
+        "Requires restarting ExileAPI to take effect.")]
     public RangeNode<int> RenderOrder { get; set; } = new(15000, -1000, 100000);
 }
 
