@@ -26,7 +26,8 @@ namespace MonsterModAlerter;
 /// The bounding box ExileCore can draw (Render.BoundsNum) was tried and covered the tile rather than the monster (seen
 /// in game, 2026-11-13).
 ///
-/// The filter matches a word in the metadata path, the name, a mod or a buff, ignoring case.
+/// The filter matches text in the row's title (so "(Rare)" finds rare monsters, where "rare" would also find any
+/// with a RareMonsterPack mod), the metadata path, the name, a mod or a buff, ignoring case.
 /// </summary>
 internal sealed class EntityInspector
 {
@@ -56,6 +57,12 @@ internal sealed class EntityInspector
     /// <summary>How far off screen, in pixels, a pin's foot may be and the pin still drawn: DevTree's margin.</summary>
     private const float PinScreenMargin = 50f;
 
+    /// <summary>
+    /// A row of the list: the entity, its index (its place in the snapshot, as in DevTree, so filtering does not
+    /// renumber rows) and the row's title, made once a frame for the filter, the row and its pin.
+    /// </summary>
+    private readonly record struct EntityRow(Entity Entity, int Index, string Title);
+
     private bool _snapshotDue = true;
     private bool _showAllEntities;
     private bool _showPins = true;
@@ -81,9 +88,8 @@ internal sealed class EntityInspector
             _snapshotDue = false;
         }
 
-        Entity hovered = null;
-        List<Entity> shown = null;
-        Dictionary<Entity, int> indexInSnapshot = null;
+        EntityRow? hovered = null;
+        List<EntityRow> shown = null;
         var windowOpen = true;
 
         ImGui.SetNextWindowSize(new Vector2(640f, 560f), ImGuiCond.FirstUseEver);
@@ -109,14 +115,16 @@ internal sealed class EntityInspector
             ImGui.TextUnformatted("Filter:");
             ImGui.SameLine();
             ImGui.SetNextItemWidth(-1f);
-            ImGui.InputTextWithHint("##mmaEntityFilter", "metadata path, name, mod or buff", ref _filter, 200,
-                ImGuiInputTextFlags.AutoSelectAll);
+            ImGui.InputTextWithHint("##mmaEntityFilter", "row text, metadata path, name, mod or buff", ref _filter,
+                200, ImGuiInputTextFlags.AutoSelectAll);
 
             var filter = _filter.Trim();
             shown = _snapshot
-                .Where(entity => _showAllEntities || Safe.Read(entity, static e => e.Path, "")
+                .Select((entity, index) => (Entity: entity, Index: index))
+                .Where(item => _showAllEntities || Safe.Read(item.Entity, static e => e.Path, "")
                     .StartsWith(MonsterPathPrefix, StringComparison.OrdinalIgnoreCase))
-                .Where(entity => filter.Length == 0 || MatchesFilter(entity, filter))
+                .Select(item => new EntityRow(item.Entity, item.Index, TitleOf(item.Entity, item.Index)))
+                .Where(row => filter.Length == 0 || MatchesFilter(row, filter))
                 .ToList();
 
             ImGui.TextDisabled(_showAllEntities
@@ -125,31 +133,25 @@ internal sealed class EntityInspector
                   "total entities, nearest first");
             ImGui.Separator();
 
-            // An entity's number is its place in the snapshot, as in DevTree, so filtering does not renumber rows.
-            indexInSnapshot = new Dictionary<Entity, int>(_snapshot.Count);
-            for (var i = 0; i < _snapshot.Count; i++)
-                indexInSnapshot[_snapshot[i]] = i;
-
             if (ImGui.BeginChild("##mmaEntities"))
             {
-                foreach (var entity in shown)
+                foreach (var row in shown)
                 {
-                    ImGui.PushID((int)Safe.Read(entity, static e => e.Id, 0u));
+                    ImGui.PushID((int)Safe.Read(row.Entity, static e => e.Id, 0u));
 
                     // The row and its details as one group, so hovering either highlights the entity.
                     ImGui.BeginGroup();
 
-                    if (ImGui.TreeNodeEx($"{LabelOf(entity, indexInSnapshot[entity])}###entity",
-                            ImGuiTreeNodeFlags.SpanAvailWidth))
+                    if (ImGui.TreeNodeEx($"{row.Title}###entity", ImGuiTreeNodeFlags.SpanAvailWidth))
                     {
-                        DrawDetailsOf(entity);
+                        DrawDetailsOf(row.Entity);
                         ImGui.TreePop();
                     }
 
                     ImGui.EndGroup();
 
                     if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenBlockedByActiveItem))
-                        hovered = entity;
+                        hovered = row;
 
                     ImGui.PopID();
                 }
@@ -172,22 +174,26 @@ internal sealed class EntityInspector
 
         if (_showPins)
         {
-            foreach (var entity in shown.Where(entity => entity != hovered))
-                DrawPin(gameController, graphics, entity, indexInSnapshot[entity], isHovered: false);
+            foreach (var row in shown.Where(row => row.Entity != hovered?.Entity))
+                DrawPin(gameController, graphics, row.Entity, row.Index, isHovered: false);
         }
 
-        if (hovered != null)
-            DrawPin(gameController, graphics, hovered, indexInSnapshot[hovered], isHovered: true);
+        if (hovered is { } hoveredRow)
+            DrawPin(gameController, graphics, hoveredRow.Entity, hoveredRow.Index, isHovered: true);
     }
 
     /// <summary>
-    /// Whether the filter is part of the entity's metadata path, its name, one of its mods or one of its buffs.
+    /// Whether the filter is part of the row's title, the entity's metadata path, its name, one of its mods or one of
+    /// its buffs. The title is checked first: it is made already, where the rest are read from the entity.
     /// </summary>
-    private static bool MatchesFilter(Entity entity, string filter)
+    private static bool MatchesFilter(EntityRow row, string filter)
     {
         bool Has(string text) => text?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true;
 
-        return Has(Safe.Read(entity, static e => e.Path, null)) ||
+        var entity = row.Entity;
+
+        return Has(row.Title) ||
+               Has(Safe.Read(entity, static e => e.Path, null)) ||
                Has(NameOf(entity)) ||
                ModsOf(entity).Any(Has) ||
                BuffsOf(entity).Any(Has);
@@ -225,7 +231,7 @@ internal sealed class EntityInspector
     /// its address in hex in square brackets unless the text already holds it (DevTree.DebugCollectionCore, with its
     /// Hide addresses setting at its default, off).
     /// </summary>
-    private static string LabelOf(Entity entity, int index)
+    private static string TitleOf(Entity entity, int index)
     {
         var text = Safe.Read(entity, static e => e.ToString(), null) ?? "ToString(): <exception thrown>";
         var address = $"{Safe.Read(entity, static e => e.Address, 0L):X}";
