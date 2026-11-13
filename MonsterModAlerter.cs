@@ -84,6 +84,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     {
         _scan.Clear();
         _sound.ForgetAnnounced();
+        _matchDrawing?.ForgetCornerMap();
 
         // "This map" is the whole of what the tally means, so a new area is where it starts again.
         _tally.Clear();
@@ -193,7 +194,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         var region = Safe.Read((GameController, Ui: ingameUi, Limit: display.LimitDrawRegion.Value),
             static s => MatchDrawing.DrawRegionOf(s.GameController, s.Ui, s.Limit), default);
 
-        var mapArea = MatchDrawing.MapAreaOf(ingameUi, region, display.EnableDrawingOnCornerMap);
+        var mapArea = _matchDrawing.MapAreaOf(ingameUi, region, display.EnableDrawingOnCornerMap);
 
         if (matches.Count > 0 || outOfRange.Count > 0)
             _matchDrawing.Draw(GameController, Settings, matches, outOfRange, region, mapArea);
@@ -203,7 +204,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         if (Settings.Debug.ShowOverlay)
         {
             Safe.Try(() => _debugOverlay.Draw(
-                GameController, Settings, _scan, _tally, matches, region, ingameUi, mapArea));
+                GameController, Settings, _scan, _tally, matches, region, ingameUi, mapArea, _matchDrawing.CornerMap));
         }
     }
 }

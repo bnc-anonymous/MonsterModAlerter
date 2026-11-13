@@ -31,7 +31,8 @@ internal sealed class DebugOverlay
 
     public void Draw(
         GameController gameController, MonsterModAlerterSettings settings, EntityScan scan, SeenTally tally,
-        List<RuleMatch> matches, RectangleF region, IngameUIElements ingameUi, RectangleF? mapArea)
+        List<RuleMatch> matches, RectangleF region, IngameUIElements ingameUi, RectangleF? mapArea,
+        RectangleF cornerMap)
     {
         _lineY = Top;
 
@@ -69,7 +70,6 @@ internal sealed class DebugOverlay
                 nearest <= radius ? Color.Orange : Color.White);
         }
 
-        var cornerMap = ingameUi.Map.SmallMiniMap.GetClientRectCache;
         WriteLine($"cornerMap={ingameUi.Map.SmallMiniMap.IsVisibleLocal} " +
                   $"({cornerMap.X:0},{cornerMap.Y:0} {cornerMap.Width:0}x{cornerMap.Height:0})  " +
                   $"largeMap={ingameUi.Map.LargeMap.IsVisibleLocal}  " +

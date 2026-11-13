@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using ExileCore;
 using ExileCore.PoEMemory.MemoryObjects;
@@ -25,6 +26,15 @@ internal sealed class MatchDrawing
 
     /// <summary>Entities that already have a count in the pass being drawn; refilled by DrawCounts.</summary>
     private readonly HashSet<uint> _numberedIds = new();
+
+    /// <summary>
+    /// How long the corner map's rectangle is kept before it is read again. It changes only with the resolution, the
+    /// window size or the game's UI scale, so a read every 2 s catches those without a restart.
+    /// </summary>
+    private const long CornerMapRefreshMs = 2000;
+
+    private readonly Stopwatch _sinceCornerMapRead = new();
+    private RectangleF _cornerMap;
 
     /// <summary>
     /// Where one match is drawn this frame. Read once per match, so the icon and count passes agree and neither reads
@@ -61,11 +71,11 @@ internal sealed class MatchDrawing
     /// <summary>
     /// The part of the screen map drawing is limited to this frame, or null when no map is drawn on. The large map
     /// covers the screen, so it gets the draw region; its own rectangle reads 0x0 while open (AutoExpedition PoE1's
-    /// Minimap.Surface). The corner map is ExileCore's SmallMiniMap, whose rectangle is its square, taken within the
-    /// draw region; drawn on only with Enable drawing on the corner map on. A corner map that reports no area falls
-    /// back to the draw region, since a clip of no area would draw nothing at all.
+    /// Minimap.Surface). The corner map is ExileCore's SmallMiniMap, whose rectangle is its square (CornerMapOf), taken
+    /// within the draw region; drawn on only with Enable drawing on the corner map on. A corner map that reports no
+    /// area falls back to the draw region, since a clip of no area would draw nothing at all.
     /// </summary>
-    public static RectangleF? MapAreaOf(IngameUIElements ingameUi, RectangleF region, bool drawOnCornerMap)
+    public RectangleF? MapAreaOf(IngameUIElements ingameUi, RectangleF region, bool drawOnCornerMap)
     {
         if (Safe.Read(ingameUi, static ui => ui.Map.LargeMap.IsVisibleLocal, false))
             return region;
@@ -73,7 +83,7 @@ internal sealed class MatchDrawing
         if (!drawOnCornerMap || !Safe.Read(ingameUi, static ui => ui.Map.SmallMiniMap.IsVisibleLocal, false))
             return null;
 
-        var cornerMap = Safe.Read(ingameUi, static ui => ui.Map.SmallMiniMap.GetClientRectCache, default(RectangleF));
+        var cornerMap = CornerMapOf(ingameUi);
 
         if (cornerMap.Width <= 0f || cornerMap.Height <= 0f)
             return region;
@@ -89,6 +99,28 @@ internal sealed class MatchDrawing
 
         return new RectangleF(left, top, right - left, bottom - top);
     }
+
+    /// <summary>
+    /// The corner map's rectangle, read again when it is older than CornerMapRefreshMs, after ForgetCornerMap, or when
+    /// the last read held no area, as during a load. Its visibility is still read every frame by MapAreaOf.
+    /// </summary>
+    private RectangleF CornerMapOf(IngameUIElements ingameUi)
+    {
+        if (_cornerMap.Width <= 0f || _cornerMap.Height <= 0f ||
+            _sinceCornerMapRead.ElapsedMilliseconds >= CornerMapRefreshMs)
+        {
+            _cornerMap = Safe.Read(ingameUi, static ui => ui.Map.SmallMiniMap.GetClientRectCache, default(RectangleF));
+            _sinceCornerMapRead.Restart();
+        }
+
+        return _cornerMap;
+    }
+
+    /// <summary>The corner map's rectangle as last read, for the debug overlay; empty before the first read.</summary>
+    public RectangleF CornerMap => _cornerMap;
+
+    /// <summary>Makes the next MapAreaOf read the corner map's rectangle again. Called on area change.</summary>
+    public void ForgetCornerMap() => _cornerMap = default;
 
     /// <param name="mapArea">From MapAreaOf: where map drawing may go, or null to draw on no map.</param>
     public void Draw(
