@@ -45,6 +45,12 @@ internal static class AlertGroupsEditor
     /// <summary>Each group's or rule's ExileCore drawers, parsed on first draw and dropped with the object.</summary>
     private static readonly ConditionalWeakTable<object, List<ISettingsHolder>> DrawersByObject = new();
 
+    /// <summary>
+    /// What the drawers are handed since the HUD's settings search: no search running and no setting
+    /// to jump to, as when the HUD draws its own core settings.
+    /// </summary>
+    private static readonly SettingsDrawContext DrawContext = new();
+
     /// <summary>The Alert rules section, closed by default like the other sections.</summary>
     public static void Draw(MonsterModAlerterSettings settings)
     {
@@ -244,7 +250,7 @@ internal static class AlertGroupsEditor
     /// </summary>
     private static bool CtrlButton(string label)
     {
-        var armed = ImGui.GetIO().KeyCtrl;
+        var armed = ImGui.IsKeyDown(ImGuiKey.ModCtrl);
 
         ImGui.BeginDisabled(!armed);
         var clicked = ImGui.Button(label);
@@ -266,7 +272,7 @@ internal static class AlertGroupsEditor
         }
 
         foreach (var drawer in drawers)
-            drawer.Draw();
+            drawer.Draw(DrawContext);
     }
 
     private static void Move<T>(List<T> list, int from, int to)

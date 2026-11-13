@@ -136,7 +136,7 @@ public class MonsterModAlerterSettings : ISettings
 
     private void DrawResetAll()
     {
-        var armed = ImGui.GetIO().KeyCtrl;
+        var armed = ImGui.IsKeyDown(ImGuiKey.ModCtrl);
 
         ImGui.BeginDisabled(!armed);
         var clicked = ImGui.Button("Reset all settings and rules###mmaResetAll");
