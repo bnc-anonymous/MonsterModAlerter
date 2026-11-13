@@ -121,7 +121,7 @@ public class DisplaySettings
     /// Map icons and counts on the corner map, ExileCore's SmallMiniMap, as well as the large map, clipped to the
     /// corner map's square (MatchDrawing.MapAreaOf). Off by default. World drawing is unaffected.
     /// </summary>
-    [Menu("Enable drawing on the corner map", "Map icons and counts on the corner map as well as the large map.")]
+    [Menu("Enable drawing on the corner map")]
     public ToggleNode EnableDrawingOnCornerMap { get; set; } = new(false);
 
     /// <summary>
