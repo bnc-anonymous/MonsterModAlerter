@@ -7,27 +7,43 @@ using ImGuiNET;
 namespace MonsterModAlerter;
 
 /// <summary>
-/// Draws the Alert groups list and each group's rules, so that both can be reordered by dragging and a rule moved into
-/// another group - which ExileCore's ContentNode list cannot do. The look follows ReAgent's group and rule lists: a
-/// drag handle, the group or rule's Enabled on its header, and its settings below when open. Those settings are still
-/// drawn by ExileCore: each group and rule is parsed once by SettingsParser, as the root settings are, and its drawers
-/// called here.
+/// Draws the Alert rules section: the groups and each group's rules, so that both can be reordered by dragging and a
+/// rule moved into another group - which ExileCore's ContentNode list cannot do. The look follows ReAgent's group and
+/// rule lists: a drag handle, the group or rule's Enabled on its header, and its settings below when open. Those
+/// settings are still drawn by ExileCore: each group and rule is parsed once by SettingsParser, as the root settings
+/// are, and its drawers called here.
+///
+/// A whole row - handle, checkbox and title - is a drop target, not the title alone: it is drawn as an ImGui group,
+/// which a drop target can be attached to. Dropping a group on a group's row moves it there; a rule on a rule's row
+/// moves it there; a rule on a group's row moves it to the end of that group, open or not.
 /// </summary>
 internal static class AlertGroupsEditor
 {
     private const string GroupPayload = "MmaGroupIndex";
     private const string RulePayload = "MmaRuleIndex";
 
-    /// <summary>Where a dragged rule came from: its group's index and its own index in that group.</summary>
+    /// <summary>
+    /// A rule's place: its group's index and its own index in that group. EndOfGroup as Rule means last.
+    /// </summary>
     private readonly record struct RulePosition(int Group, int Rule);
+
+    private const int EndOfGroup = int.MaxValue;
 
     /// <summary>Each group's or rule's ExileCore drawers, parsed on first draw and dropped with the object.</summary>
     private static readonly ConditionalWeakTable<object, List<ISettingsHolder>> DrawersByObject = new();
 
+    /// <summary>The Alert rules section, closed by default like the other sections.</summary>
     public static void Draw(MonsterModAlerterSettings settings)
     {
-        var groups = settings.Groups.Content;
+        if (!ImGui.TreeNodeEx("Alert rules###mmaAlertRules"))
+            return;
 
+        DrawGroups(settings.Groups.Content);
+        ImGui.TreePop();
+    }
+
+    private static void DrawGroups(List<AlertGroup> groups)
+    {
         // Moves and deletions are applied after the loop, never inside it, so the list is not changed while drawn.
         (int From, int To)? groupMove = null;
         (RulePosition From, RulePosition To)? ruleMove = null;
@@ -41,14 +57,19 @@ internal static class AlertGroupsEditor
             // Keyed by the object, not its index, so a header keeps its open state when the group moves.
             ImGui.PushID(RuntimeHelpers.GetHashCode(group));
 
+            ImGui.BeginGroup();
             DragHandle(GroupPayload, g, group.HeaderText);
             ImGui.SameLine();
             EnabledCheckbox(group.Enabled);
             ImGui.SameLine();
-
             var open = ImGui.CollapsingHeader($"{group.HeaderText}###group");
-            if (DroppedOn<int>(GroupPayload) is { } from)
-                groupMove = (from, g);
+            ImGui.EndGroup();
+
+            var (droppedGroup, droppedRule) = DroppedOnRow();
+            if (droppedGroup is { } fromGroup)
+                groupMove = (fromGroup, g);
+            if (droppedRule is { } fromRule)
+                ruleMove = (fromRule, new RulePosition(g, EndOfGroup));
 
             if (open)
             {
@@ -62,13 +83,15 @@ internal static class AlertGroupsEditor
                     var rule = rules[r];
                     ImGui.PushID(RuntimeHelpers.GetHashCode(rule));
 
+                    ImGui.BeginGroup();
                     DragHandle(RulePayload, new RulePosition(g, r), rule.HeaderText);
                     ImGui.SameLine();
                     EnabledCheckbox(rule.Enabled);
                     ImGui.SameLine();
-
                     var ruleOpen = ImGui.CollapsingHeader($"{rule.HeaderText}###rule");
-                    if (DroppedOn<RulePosition>(RulePayload) is { } source)
+                    ImGui.EndGroup();
+
+                    if (DroppedOnRow().Rule is { } source)
                         ruleMove = (source, new RulePosition(g, r));
 
                     if (ruleOpen)
@@ -135,21 +158,25 @@ internal static class AlertGroupsEditor
         }
         else if (ImGui.IsItemHovered())
         {
-            ImGui.SetTooltip("Drag onto another to move it there.");
+            ImGui.SetTooltip("Drag onto another row to move it there.");
         }
     }
 
-    /// <summary>The payload dropped on the item just drawn, if one was released over it this frame.</summary>
-    private static T? DroppedOn<T>(string payloadType) where T : unmanaged
+    /// <summary>
+    /// What was dropped on the row just drawn (the last ImGui group), if anything was released over it this frame: a
+    /// group's index or a rule's place.
+    /// </summary>
+    private static (int? Group, RulePosition? Rule) DroppedOnRow()
     {
         if (!ImGui.BeginDragDropTarget())
-            return null;
+            return (null, null);
 
-        var payload = ImGuiHelpers.AcceptDragDropPayload<T>(payloadType);
+        var group = ImGuiHelpers.AcceptDragDropPayload<int>(GroupPayload);
+        var rule = ImGuiHelpers.AcceptDragDropPayload<RulePosition>(RulePayload);
         ImGui.EndDragDropTarget();
 
         // As ReAgent does: acted on only as the mouse is let go over the target.
-        return payload != null && ImGui.IsMouseReleased(ImGuiMouseButton.Left) ? payload : null;
+        return ImGui.IsMouseReleased(ImGuiMouseButton.Left) ? (group, rule) : (null, null);
     }
 
     private static void EnabledCheckbox(ExileCore.Shared.Nodes.ToggleNode enabled)
@@ -202,7 +229,9 @@ internal static class AlertGroupsEditor
         list.Insert(to, item);
     }
 
-    /// <summary>Moves a rule to where it was dropped: within its group, or into another group at that place.</summary>
+    /// <summary>
+    /// Moves a rule to where it was dropped: within its group, or into another group at that place or at its end.
+    /// </summary>
     private static void MoveRule(List<AlertGroup> groups, RulePosition from, RulePosition to)
     {
         if (from.Group < 0 || from.Group >= groups.Count || to.Group < 0 || to.Group >= groups.Count)
@@ -212,7 +241,7 @@ internal static class AlertGroupsEditor
 
         if (from.Group == to.Group)
         {
-            Move(source, from.Rule, to.Rule);
+            Move(source, from.Rule, to.Rule == EndOfGroup ? source.Count - 1 : to.Rule);
             return;
         }
 

@@ -67,8 +67,9 @@ public class MonsterModAlerterSettings : ISettings
     public ContentNode<AlertGroup> Groups { get; set; } = new() { Content = new List<AlertGroup>() };
 
     /// <summary>
-    /// The Alert groups list, drawn by AlertGroupsEditor rather than as ExileCore's ContentNode list, so groups and
-    /// rules can be reordered by dragging. Made in the constructor because it needs the settings it draws.
+    /// The Alert rules section - the groups and their rules - drawn by AlertGroupsEditor rather than as ExileCore's
+    /// ContentNode list, so groups and rules can be reordered by dragging. Made in the constructor because it needs the
+    /// settings it draws.
     /// </summary>
     [JsonIgnore]
     public CustomNode GroupsUi { get; set; }
