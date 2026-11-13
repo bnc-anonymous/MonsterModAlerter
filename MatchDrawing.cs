@@ -151,17 +151,16 @@ internal sealed class MatchDrawing
         List<RememberedPosition> remembered, RectangleF region, RectangleF? mapArea)
     {
         _rememberedDrawn.Clear();
-        ReadPlacements(gameController, matches, mapArea != null, settings.World.Enable);
+        ReadPlacements(gameController, matches, mapArea != null);
 
         // The world first: the game draws the large map over the world, so its icons go over the world's here too.
         for (var i = 0; i < matches.Count; i++)
         {
             if (_placements[i].InWorld)
-                DrawInWorld(settings.World, _placements[i].ScreenPoint, matches[i], region);
+                DrawInWorld(_placements[i].ScreenPoint, matches[i], region);
         }
 
-        if (settings.ModCount.DrawInWorld)
-            DrawCounts(matches, settings.ModCount, onMap: false, region);
+        DrawCounts(matches, settings.Display.ModCount, onMap: false, region);
 
         if (mapArea is not { } area)
             return;
@@ -181,7 +180,7 @@ internal sealed class MatchDrawing
             }
 
             // Remembered positions first, so a live entity's icon always sits on top of a remembered one.
-            DrawRememberedPositions(remembered, area, settings.ModCount);
+            DrawRememberedPositions(remembered, area, settings.Display.ModCount);
 
             for (var i = 0; i < matches.Count; i++)
             {
@@ -193,19 +192,18 @@ internal sealed class MatchDrawing
             }
 
             // After every icon, so a number is never buried under one.
-            DrawCounts(matches, settings.ModCount, onMap: true, area);
+            DrawCounts(matches, settings.Display.ModCount, onMap: true, area);
         }
     }
 
-    private void ReadPlacements(
-        GameController gameController, List<RuleMatch> matches, bool mapDrawn, bool worldEnabled)
+    private void ReadPlacements(GameController gameController, List<RuleMatch> matches, bool mapDrawn)
     {
         _placements.Clear();
 
         foreach (var match in matches)
         {
             var state = (Drawing: this, GameController: gameController, Match: match,
-                OnMap: mapDrawn && match.Rule.ShowOnMap, InWorld: worldEnabled && match.Rule.ShowInWorld);
+                OnMap: mapDrawn && match.Rule.ShowOnMap, InWorld: match.Rule.ShowInWorld.Value);
 
             _placements.Add(Safe.Read(state,
                 static s => s.Drawing.PlacementOf(s.GameController, s.Match, s.OnMap, s.InWorld),
@@ -242,47 +240,48 @@ internal sealed class MatchDrawing
         centre.X + size.X / 2f > area.Left && centre.X - size.X / 2f < area.Right &&
         centre.Y + size.Y / 2f > area.Top && centre.Y - size.Y / 2f < area.Bottom;
 
-    private void DrawInWorld(WorldSettings world, Vector2 screenPos, RuleMatch match, RectangleF region)
+    /// <summary>
+    /// The rule's world icon, box and label, each as the rule sets it. Matches are drawn in ascending priority, so the
+    /// highest-priority rule's box sits on top where several rules box the same monster.
+    /// </summary>
+    private void DrawInWorld(Vector2 screenPos, RuleMatch match, RectangleF region)
     {
         if (!region.Contains(screenPos.X, screenPos.Y))
             return;
 
-        var worldIconSize = match.Rule.WorldIconSize.Value;
+        var rule = match.Rule;
+        var worldIconSize = rule.WorldIconSize.Value;
 
-        // The box frames the entity, not the icon, so it is drawn once no matter how many rules matched - several
-        // identical boxes around one entity would just thicken the outline.
-        if (world.DrawBox && match.Slot == 0)
+        if (rule.DrawBox)
         {
-            var half = world.BoxSize.Value / 2f;
-            var boxColour = world.UseRuleTintForBox ? match.Rule.Tint.Value : world.BoxColour.Value;
-            _graphics.DrawFrame(
-                new RectangleF(screenPos.X - half, screenPos.Y - half, world.BoxSize.Value, world.BoxSize.Value),
-                boxColour,
-                world.BoxThickness.Value);
+            var boxSize = rule.BoxSize.Value;
+            var half = boxSize / 2f;
+            _graphics.DrawFrame(new RectangleF(screenPos.X - half, screenPos.Y - half, boxSize, boxSize),
+                rule.BoxColour.Value, rule.BoxThickness.Value);
         }
 
-        if (world.DrawIcon)
-            DrawIcon(screenPos, worldIconSize, match.Rule);
+        if (rule.DrawWorldIcon)
+            DrawIcon(screenPos, worldIconSize, rule);
 
-        if (!world.DrawLabel)
+        if (!rule.DrawLabel)
             return;
 
         // Sits below whichever of the two is taller, so it never overlaps either.
         var halfExtent = Math.Max(
-            world.DrawBox ? world.BoxSize.Value : 0,
-            world.DrawIcon ? worldIconSize : 0) / 2f;
+            rule.DrawBox ? rule.BoxSize.Value : 0,
+            rule.DrawWorldIcon ? worldIconSize : 0) / 2f;
 
         const float labelGap = 2f;
 
-        var text = string.IsNullOrWhiteSpace(match.Rule.Label?.Value) ? match.MatchedName : match.Rule.Label.Value;
-        using (_graphics.SetTextScale(world.LabelScale.Value))
+        var text = string.IsNullOrWhiteSpace(rule.Label?.Value) ? match.MatchedName : rule.Label.Value;
+        using (_graphics.SetTextScale(rule.LabelScale.Value))
         {
             var textSize = _graphics.MeasureText(text);
 
             // Stacked rather than side by side: labels are far wider than icons, so a row of them would run into each
             // other and into the neighbouring entities'.
             var y = screenPos.Y + halfExtent + labelGap + match.Slot * (textSize.Y + labelGap);
-            _graphics.DrawText(text, new Vector2(screenPos.X - textSize.X / 2f, y), world.LabelColour.Value);
+            _graphics.DrawText(text, new Vector2(screenPos.X - textSize.X / 2f, y), rule.LabelColour.Value);
         }
     }
 
@@ -368,6 +367,11 @@ internal sealed class MatchDrawing
                 var rule = match.Rule;
 
                 if (!rule.ShowModCount || match.ModCount < rule.ModCountMinimum.Value)
+                    continue;
+
+                // In the world only for the rules that ask, and checked before the entity is numbered, so a
+                // lower-priority rule that asks still gets its number there.
+                if (!onMap && !rule.DrawModCountInWorld)
                     continue;
 
                 if (!_numberedIds.Add(match.EntityId))

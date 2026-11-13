@@ -15,8 +15,9 @@ using Vector2N = System.Numerics.Vector2;
 namespace MonsterModAlerter;
 
 /// <summary>
-/// One kind of monster or modifier to mark, and how to present it. Shown by the HUD as an entry in the Alert rules
-/// list, so each rule has its own icon, sizes, count and sound.
+/// One kind of monster or modifier to mark, and how to present it: its icon on the map and in the world, a box and a
+/// label in the world, a modifier count and a sound. Settings that only matter when a switch is on are shown only then
+/// (ConditionalDisplay).
 /// </summary>
 [Submenu(CollapsedByDefault = true)]
 public class AlertRule
@@ -37,12 +38,12 @@ public class AlertRule
     /// <summary>
     /// Matched as a case-insensitive substring of the monster's mod and buff names (Search mods and Search buffs,
     /// below). Comma-separated terms are ANDed: "mod1,mod2" matches only a monster carrying both, which flags
-    /// combinations that are harmless alone; either/or is two rules. Blank leaves the path filter alone to decide,
-    /// which marks a kind of monster whatever its modifiers.
+    /// combinations that are harmless alone; either/or is two rules. Blank leaves Metadata paths alone to decide, which
+    /// marks a kind of monster whatever its modifiers.
     /// </summary>
     [Menu("Search term",
         "Matched against mod and buff names, ignoring case. Comma-separated\n" +
-        "terms must all match. Blank: the path filter alone decides.")]
+        "terms must all match. Blank: Metadata paths alone decide.")]
     public TextNode SearchTerm { get; set; } = new("");
 
     /// <summary>
@@ -71,6 +72,22 @@ public class AlertRule
     public ToggleNode UseRegex { get; set; } = new(false);
 
     /// <summary>
+    /// Comma-separated parts of the entity's metadata path, e.g. Metadata/Monsters/BeehiveBehemoth, each matched as a
+    /// case-insensitive substring. They are ORed, since they name alternatives rather than conditions that must all
+    /// hold. Blank matches every entity, with or without Exclude metadata paths: treating a blank exclusion as
+    /// "everything excluded" would switch a rule off the moment the text was cleared.
+    /// </summary>
+    [Menu("Metadata paths",
+        "Comma-separated parts of the metadata path; any one matches,\n" +
+        "e.g. Metadata/Monsters/BeehiveBehemoth. Blank matches all.")]
+    public TextNode MetadataPaths { get; set; } = new("");
+
+    /// <summary>Matches every entity except those Metadata paths name, e.g. everything but a given family.</summary>
+    [Menu("Exclude metadata paths")]
+    [ConditionalDisplay(nameof(HasMetadataPaths))]
+    public ToggleNode ExcludeMetadataPaths { get; set; } = new(false);
+
+    /// <summary>
     /// Off: the rule sees only hostile monsters, and its rarity filter applies. On: it is tested against every loaded
     /// entity with a position - critters, chests, doors, shrines - with the hostile check and the rarity filter
     /// skipped, and its terms also search the metadata path, since most such entities carry neither mods nor buffs.
@@ -81,13 +98,12 @@ public class AlertRule
         "its metadata path too. The rarity filter does not apply.")]
     public ToggleNode AnyEntity { get; set; } = new(false);
 
-    [Menu("Path filter")]
-    public PathFilterSettings PathFilter { get; set; } = new();
-
     /// <summary>
-    /// The rarities of monster this rule matches. Not applied with Match any entity on: a chest has no rarity.
+    /// The rarities of monster this rule matches. Not applied, nor shown, with Match any entity on: a chest has no
+    /// rarity.
     /// </summary>
     [Menu("Monster rarity filter")]
+    [ConditionalDisplay(nameof(AnyEntity), false)]
     public RarityFilterSettings Rarity { get; set; } = RarityFilterSettings.RareAndUnique();
 
     /// <summary>
@@ -96,8 +112,8 @@ public class AlertRule
     /// sound.
     /// </summary>
     [Menu("Priority",
-        "Higher draws on top. With Draw multiple matching icons off, only the\n" +
-        "highest-priority rule matching a monster is shown.")]
+        "Higher draws on top. With Draw multiple matching icons off, only\n" +
+        "the highest-priority rule matching a monster is shown.")]
     public RangeNode<int> Priority { get; set; } = new(0, -100, 100);
 
     [JsonIgnore]
@@ -107,6 +123,7 @@ public class AlertRule
     [JsonConverter(typeof(StringEnumConverter))]
     public MapIconsIndex Icon = MapIconsIndex.CorpseTypeUndead;
 
+    /// <summary>The icon, drawn on the map and, with Draw icon under World, in the world.</summary>
     [Menu("Icon")]
     [JsonIgnore]
     public IconPickerNode IconPicker { get; set; }
@@ -121,31 +138,74 @@ public class AlertRule
     public ToggleNode ShowOnMap { get; set; } = new(true);
 
     [Menu("Map icon size (px)")]
+    [ConditionalDisplay(nameof(ShowOnMap))]
     public RangeNode<int> MapIconSize { get; set; } = new(32, 4, 100);
-
-    /// <summary>Over the monster, with the World section's drawing on.</summary>
-    [Menu("Show in world")]
-    public ToggleNode ShowInWorld { get; set; } = new(true);
-
-    [Menu("World icon size (px)")]
-    public RangeNode<int> WorldIconSize { get; set; } = new(64, 4, 256);
-
-    /// <summary>
-    /// Drawn under the world icon when the World section's Draw label is on. Blank shows the matched name.
-    /// </summary>
-    [Menu("Label", "Drawn under the world icon with World > Draw label on.\nBlank: the matched name.")]
-    public TextNode Label { get; set; } = new("");
 
     /// <summary>
     /// Keeps the map icon, and the count, at the spot the monster was last seen after it leaves range. Drawn as a live
     /// icon is, so it is a last known position rather than proof the monster is still there. Dropped when the monster
     /// is seen dead, when the player comes near and nothing is there (RememberedPositions.ForgetRadius), and on area
-    /// change.
+    /// change. Shown only with Show on map on, since only map icons are remembered.
     /// </summary>
     [Menu("Remember position",
         "Keep the map icon at the last seen spot after the monster leaves\n" +
         "range, until it is seen dead, found gone, or the area changes.")]
+    [ConditionalDisplay(nameof(ShowOnMap))]
     public ToggleNode RememberPosition { get; set; } = new(false);
+
+    [JsonIgnore]
+    public CustomNode WorldGroup { get; set; } = Section.Of("World");
+
+    /// <summary>Whether anything is drawn over the monster in the world: the icon, box and label below.</summary>
+    [Menu("Show in world")]
+    public ToggleNode ShowInWorld { get; set; } = new(true);
+
+    [Menu("Draw icon")]
+    [ConditionalDisplay(nameof(ShowInWorld))]
+    public ToggleNode DrawWorldIcon { get; set; } = new(true);
+
+    [Menu("World icon size (px)")]
+    [ConditionalDisplay(nameof(ShowsWorldIcon))]
+    public RangeNode<int> WorldIconSize { get; set; } = new(64, 4, 256);
+
+    /// <summary>
+    /// A frame round the monster. Several matching rules' boxes are drawn in priority order, highest on top.
+    /// </summary>
+    [Menu("Draw box")]
+    [ConditionalDisplay(nameof(ShowInWorld))]
+    public ToggleNode DrawBox { get; set; } = new(false);
+
+    [Menu("Box size (px)")]
+    [ConditionalDisplay(nameof(ShowsBox))]
+    public RangeNode<int> BoxSize { get; set; } = new(64, 8, 200);
+
+    [Menu("Box thickness (px)")]
+    [ConditionalDisplay(nameof(ShowsBox))]
+    public RangeNode<int> BoxThickness { get; set; } = new(3, 1, 10);
+
+    [Menu("Box colour")]
+    [ConditionalDisplay(nameof(ShowsBox))]
+    public ColorNode BoxColour { get; set; } = new(Color.White);
+
+    /// <summary>
+    /// Text under the world icon and box: Label, or the matched mod, buff or path when Label is blank. Several matching
+    /// rules' labels stack downwards.
+    /// </summary>
+    [Menu("Draw label")]
+    [ConditionalDisplay(nameof(ShowInWorld))]
+    public ToggleNode DrawLabel { get; set; } = new(false);
+
+    [Menu("Label", "Blank: the matched mod, buff or path.")]
+    [ConditionalDisplay(nameof(ShowsLabel))]
+    public TextNode Label { get; set; } = new("");
+
+    [Menu("Label colour")]
+    [ConditionalDisplay(nameof(ShowsLabel))]
+    public ColorNode LabelColour { get; set; } = new(Colours.FromArgb(255, 255, 210, 80));
+
+    [Menu("Label scale")]
+    [ConditionalDisplay(nameof(ShowsLabel))]
+    public RangeNode<float> LabelScale { get; set; } = new(1.0f, 0.5f, 3.0f);
 
     [JsonIgnore]
     public CustomNode ModCountGroup { get; set; } = Section.Of("Mod count");
@@ -154,7 +214,7 @@ public class AlertRule
     /// Draws a number on the monster's map icon: by default how many rare modifiers it has - the distinct MonsterMod
     /// entries of ObjectMagicProperties.Mods, since the game repeats some, so the number matches the monster's tooltip.
     /// Buffs are not counted: they come and go with auras and charges and would make it flicker. The Debug section's
-    /// overlay lists the entries and which were counted. Drawn as the Mod count section says.
+    /// overlay lists the entries and which were counted. Drawn as Display's Mod count says.
     /// </summary>
     [Menu("Show mod count", "The monster's rare modifiers, each counted once.")]
     public ToggleNode ShowModCount { get; set; } = new(false);
@@ -162,9 +222,10 @@ public class AlertRule
     /// <summary>
     /// Counts the distinct mod and buff names the search term matches instead: with "MonsterMod.*Touched" as a regex, a
     /// monster with Fire Touched and Cold Touched reads 2. Buffs count only with Search buffs on. Ignored without a
-    /// search term, which counts rare modifiers.
+    /// search term, which counts rare modifiers. Shown while the count is shown or gates the rule (Mod count minimum).
     /// </summary>
     [Menu("Count search matches", "Count the mods and buffs the search term matches instead.")]
+    [ConditionalDisplay(nameof(UsesModCount))]
     public ToggleNode CountSearchMatches { get; set; } = new(false);
 
     /// <summary>
@@ -175,7 +236,13 @@ public class AlertRule
     public RangeNode<int> ModCountMinimum { get; set; } = new(0, 0, 50);
 
     [Menu("Mod count colour")]
+    [ConditionalDisplay(nameof(ShowModCount))]
     public ColorNode ModCountColour { get; set; } = new(Color.White);
+
+    /// <summary>The same number over the monster in the world, beside its world icon, as well as on the map.</summary>
+    [Menu("Draw mod count in world")]
+    [ConditionalDisplay(nameof(ShowModCount))]
+    public ToggleNode DrawModCountInWorld { get; set; } = new(false);
 
     [JsonIgnore]
     public CustomNode SeenTallyGroup { get; set; } = Section.Of("Seen tally");
@@ -197,7 +264,81 @@ public class AlertRule
     /// A file in the HUD's Sounds folder, named without its extension; "attention" is the spoken warning.
     /// </summary>
     [Menu("Sound file", "A file in the HUD's Sounds folder, without its extension.")]
+    [ConditionalDisplay(nameof(PlaySound))]
     public TextNode SoundFile { get; set; } = new("attention");
+
+    // Conditions for ConditionalDisplay above. Not settings: neither saved nor drawn.
+
+    [JsonIgnore]
+    [IgnoreMenu]
+    public bool HasMetadataPaths => MetadataPathList.Length > 0;
+
+    [JsonIgnore]
+    [IgnoreMenu]
+    public bool ShowsWorldIcon => ShowInWorld && DrawWorldIcon;
+
+    [JsonIgnore]
+    [IgnoreMenu]
+    public bool ShowsBox => ShowInWorld && DrawBox;
+
+    [JsonIgnore]
+    [IgnoreMenu]
+    public bool ShowsLabel => ShowInWorld && DrawLabel;
+
+    [JsonIgnore]
+    [IgnoreMenu]
+    public bool UsesModCount => ShowModCount || ModCountMinimum.Value > 0;
+
+    private string _metadataPathSource;
+    private string[] _metadataPathList = [];
+
+    /// <summary>MetadataPaths split on commas, re-split only when the text changes.</summary>
+    [JsonIgnore]
+    public string[] MetadataPathList
+    {
+        get
+        {
+            var source = MetadataPaths?.Value ?? "";
+            if (source != _metadataPathSource)
+            {
+                _metadataPathSource = source;
+                _metadataPathList =
+                    source.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            }
+
+            return _metadataPathList;
+        }
+    }
+
+    /// <summary>
+    /// Whether an entity with this metadata path passes Metadata paths, honouring Exclude metadata paths.
+    /// </summary>
+    public bool MatchesMetadataPath(string path)
+    {
+        var parts = MetadataPathList;
+        if (parts.Length == 0)
+            return true;
+
+        var hit = false;
+
+        if (!string.IsNullOrEmpty(path))
+        {
+            foreach (var part in parts)
+            {
+                if (path.Contains(part, StringComparison.OrdinalIgnoreCase))
+                {
+                    hit = true;
+                    break;
+                }
+            }
+        }
+
+        return ExcludeMetadataPaths ? !hit : hit;
+    }
+
+    /// <summary>Metadata paths as the rule's entry shows them, with "not " in front when they are excluded.</summary>
+    public string DescribeMetadataPaths() =>
+        !HasMetadataPaths ? "any monster" : (ExcludeMetadataPaths ? "not " : "") + MetadataPaths.Value;
 
     private string _termSource;
     private string[] _terms = [];
@@ -299,10 +440,10 @@ public class AlertRule
     /// </summary>
     public override string ToString()
     {
-        // A rule with no term is valid when the path filter carries it, so name that instead of reporting the rule as
+        // A rule with no term is valid when Metadata paths carry it, so name those instead of reporting the rule as
         // incomplete.
         var term = string.IsNullOrWhiteSpace(SearchTerm?.Value)
-            ? (PathFilter?.IsBlank == false ? PathFilter.Describe() : "<no term>")
+            ? (HasMetadataPaths ? DescribeMetadataPaths() : "<no term>")
             : SearchTerm.Value;
 
         // A rule that cannot compile its pattern matches nothing, which is indistinguishable from "no such monster

@@ -54,11 +54,11 @@ internal sealed class EntityScan
 
     public void Run(GameController gameController, MonsterModAlerterSettings settings)
     {
-        // A rule needs something to go on, but either half will do: a mod term, or a path filter naming (or excluding)
+        // A rule needs something to go on, but either half will do: a mod term, or Metadata paths naming (or excluding)
         // a family. A rule with neither would match every monster.
         var rules = settings.Rules?.Content?
             .Where(r => r is { Enabled.Value: true } &&
-                        (!string.IsNullOrWhiteSpace(r.SearchTerm?.Value) || r.PathFilter?.IsBlank == false))
+                        (!string.IsNullOrWhiteSpace(r.SearchTerm?.Value) || r.HasMetadataPaths))
             .ToArray() ?? [];
 
         if (rules.Length == 0)

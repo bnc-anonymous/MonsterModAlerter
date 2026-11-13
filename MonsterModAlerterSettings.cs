@@ -72,13 +72,6 @@ public class MonsterModAlerterSettings : ISettings
     [Submenu(CollapsedByDefault = true)]
     public DisplaySettings Display { get; set; } = new();
 
-    [Submenu(CollapsedByDefault = true)]
-    public WorldSettings World { get; set; } = new();
-
-    [Menu("Mod count", "Drawn for the rules with Show mod count on.")]
-    [Submenu(CollapsedByDefault = true)]
-    public ModCountSettings ModCount { get; set; } = new();
-
     [Menu("Seen tally", "Counts what the rules with Add to seen tally on have matched\nsince entering the area.")]
     [Submenu(CollapsedByDefault = true)]
     public SeenTallySettings SeenTally { get; set; } = new();
@@ -149,6 +142,11 @@ public class DisplaySettings
     /// default of 15000 is above both. ExileCore sorts once, after every plugin is initialised, so a change takes
     /// effect at the next HUD start.
     /// </summary>
+    /// <summary>How each rule's modifier count looks. Which rules show one, and where, is each rule's own.</summary>
+    [Menu("Mod count", "How the counts look, for the rules with Show mod count on.")]
+    [Submenu(CollapsedByDefault = true)]
+    public ModCountSettings ModCount { get; set; } = new();
+
     [Menu("Render order",
         "Plugins draw in this order, lowest first, so a higher value draws\n" +
         "later, over the others. MinimapIcons, for example, draws at 0.\n" +
@@ -158,53 +156,9 @@ public class DisplaySettings
 }
 
 /// <summary>
-/// Drawing over the monster in the world. Each rule turns it on with Show in world. See MatchDrawing.
-/// </summary>
-public class WorldSettings
-{
-    [Menu("Enable")]
-    public ToggleNode Enable { get; set; } = new(true);
-
-    /// <summary>The rule's icon, at the rule's World icon size.</summary>
-    [Menu("Draw icon")]
-    public ToggleNode DrawIcon { get; set; } = new(true);
-
-    /// <summary>A frame round the monster, drawn once however many rules match it.</summary>
-    [Menu("Draw box")]
-    public ToggleNode DrawBox { get; set; } = new(false);
-
-    [Menu("Box size (px)")]
-    public RangeNode<int> BoxSize { get; set; } = new(64, 8, 200);
-
-    [Menu("Box thickness (px)")]
-    public RangeNode<int> BoxThickness { get; set; } = new(3, 1, 10);
-
-    /// <summary>
-    /// Colours the box with the tint of the highest-priority rule matching the monster, rather than Box colour.
-    /// </summary>
-    [Menu("Use rule tint for box")]
-    public ToggleNode UseRuleTintForBox { get; set; } = new(true);
-
-    [Menu("Box colour", "Used when Use rule tint for box is off.")]
-    public ColorNode BoxColour { get; set; } = new(Colours.FromArgb(255, 235, 90, 90));
-
-    /// <summary>
-    /// The rule's Label, or the matched mod, buff or path when the label is blank, under the icon and box. Labels of
-    /// several matching rules stack downwards.
-    /// </summary>
-    [Menu("Draw label", "A rule's Label, or the matched name when it has none, under the\nicon.")]
-    public ToggleNode DrawLabel { get; set; } = new(false);
-
-    [Menu("Label colour")]
-    public ColorNode LabelColour { get; set; } = new(Colours.FromArgb(255, 255, 210, 80));
-
-    [Menu("Label scale")]
-    public RangeNode<float> LabelScale { get; set; } = new(1.0f, 0.5f, 3.0f);
-}
-
-/// <summary>
-/// How the modifier count is drawn. Which monsters get one is decided per alert rule, by Show mod count, so a count is
-/// always tied to a rule rather than being a second list of monsters to keep in step with the first.
+/// How the modifier count is drawn, under Display. Which monsters get one, and whether in the world as well, is decided
+/// per alert rule (Show mod count, Draw mod count in world), so a count is always tied to a rule rather than being a
+/// second list of monsters to keep in step with the first.
 /// </summary>
 public class ModCountSettings
 {
@@ -250,10 +204,6 @@ public class ModCountSettings
 
     [Menu("Background colour")]
     public ColorNode BackgroundColour { get; set; } = new(new Color(0, 0, 0, 200));
-
-    /// <summary>The same number over the monster in the world, beside its world icon.</summary>
-    [Menu("Draw in world", "As well as on the map.")]
-    public ToggleNode DrawInWorld { get; set; } = new(false);
 
     /// <summary>
     /// Offset from the monster's position that puts the number beside an icon of the given size, rather than under it.
@@ -427,79 +377,4 @@ public class RarityFilterSettings
         MonsterRarity.Unique => Unique,
         _ => false,
     };
-}
-
-/// <summary>
-/// Matches an entity by its metadata path, e.g.
-/// Metadata/Monsters/BeehiveBehemoth/BeehiveBehemothBossStandaloneAllFlame.
-///
-/// Blank always means no opinion: it matches every entity whether or not Exclude is on. Treating a blank exclusion as
-/// "everything is excluded" would switch a rule off the moment the text was cleared.
-/// </summary>
-[Submenu(CollapsedByDefault = false)]
-public class PathFilterSettings
-{
-    /// <summary>
-    /// Comma-separated parts of the metadata path, each matched as a case-insensitive substring. They are ORed, since
-    /// they name alternatives rather than conditions that must all hold.
-    /// </summary>
-    [Menu("Paths",
-        "Comma-separated parts of the metadata path; any one matches,\n" +
-        "e.g. Metadata/Monsters/BeehiveBehemoth. Blank matches all.")]
-    public TextNode Paths { get; set; } = new("");
-
-    /// <summary>
-    /// Matches every entity except those the paths name, e.g. to mark everything that is not a given family.
-    /// </summary>
-    [Menu("Exclude", "Match everything except these paths.")]
-    public ToggleNode Exclude { get; set; } = new(false);
-
-    private string _splitSource;
-    private string[] _splitPaths = [];
-
-    /// <summary>Paths split on commas, re-split only when the text changes.</summary>
-    [JsonIgnore]
-    public string[] PathList
-    {
-        get
-        {
-            var source = Paths?.Value ?? "";
-            if (source != _splitSource)
-            {
-                _splitSource = source;
-                _splitPaths = source.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            }
-
-            return _splitPaths;
-        }
-    }
-
-    [JsonIgnore]
-    public bool IsBlank => PathList.Length == 0;
-
-    /// <summary>Whether an entity with this metadata path passes the filter, honouring Exclude.</summary>
-    public bool Matches(string path)
-    {
-        var paths = PathList;
-        if (paths.Length == 0)
-            return true;
-
-        var hit = false;
-
-        if (!string.IsNullOrEmpty(path))
-        {
-            foreach (var part in paths)
-            {
-                if (path.Contains(part, StringComparison.OrdinalIgnoreCase))
-                {
-                    hit = true;
-                    break;
-                }
-            }
-        }
-
-        return Exclude ? !hit : hit;
-    }
-
-    public string Describe() => IsBlank ? "any monster" : (Exclude ? "not " : "") + Paths.Value;
 }

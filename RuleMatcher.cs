@@ -107,8 +107,8 @@ internal sealed class RuleMatcher
             }
         }
 
-        // No early-out on an empty name list: a rule can match on the path filter alone, and such a rule must still
-        // fire for a monster carrying no mods or buffs at all.
+        // No early-out on an empty name list: a rule can match on Metadata paths alone, and such a rule must still fire
+        // for a monster carrying no mods or buffs at all.
         RuleMatch best = null;
         var entityId = entity.Id;
         var path = entity.Path;
@@ -133,16 +133,16 @@ internal sealed class RuleMatcher
             if (!_drawMultipleMatchingIcons && best != null && rule.Priority.Value <= best.Rule.Priority.Value)
                 continue;
 
-            if (rule.PathFilter?.Matches(path) == false)
+            if (!rule.MatchesMetadataPath(path))
                 continue;
 
             var terms = rule.Terms;
 
-            // No term means the path filter alone decides, so what to label it with is the filter itself rather than a
+            // No term means Metadata paths alone decide, so what to label it with is the filter itself rather than a
             // mod name.
             if (terms.Length == 0)
             {
-                if (rule.PathFilter?.IsBlank != false)
+                if (!rule.HasMetadataPaths)
                     continue;
 
                 // With no term there is nothing to count matches of, so the minimum applies to the rare-affix count -
@@ -150,7 +150,7 @@ internal sealed class RuleMatcher
                 if (modCount < rule.ModCountMinimum.Value)
                     continue;
 
-                best = Keep(new RuleMatch(entity, entityId, rule, rule.PathFilter.Describe(), modCount, checkAlive));
+                best = Keep(new RuleMatch(entity, entityId, rule, rule.DescribeMetadataPaths(), modCount, checkAlive));
                 continue;
             }
 
