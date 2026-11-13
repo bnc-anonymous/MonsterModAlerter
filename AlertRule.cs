@@ -180,7 +180,7 @@ public class AlertRule : ISettings
         "Keep the map icon at the last seen spot after the monster leaves\n" +
         "range, until it is seen dead, found gone, or the area changes.")]
     [ConditionalDisplay(nameof(ShowOnMap))]
-    public ToggleNode RememberPosition { get; set; } = new(false);
+    public ToggleNode RememberPosition { get; set; } = new(true);
 
     [JsonIgnore]
     public CustomNode WorldGroup { get; set; } = Section.Of("World");
