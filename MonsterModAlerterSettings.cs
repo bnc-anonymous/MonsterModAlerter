@@ -8,7 +8,6 @@ using ExileCore.Shared.Nodes;
 using ImGuiNET;
 using Newtonsoft.Json;
 using Color = SharpDX.Color;
-using Vector2N = System.Numerics.Vector2;
 
 namespace MonsterModAlerter;
 
@@ -188,11 +187,6 @@ public class DisplaySettings
     [Menu("Draw multiple matching icons", "Off: only the highest-priority rule's icon.")]
     public ToggleNode DrawMultipleMatchingIcons { get; set; } = new(true);
 
-    /// <summary>How each rule's modifier count looks. Which rules show one, and where, is each rule's own.</summary>
-    [Menu("Mod count", "How the counts look, for the rules that show one.")]
-    [Submenu(CollapsedByDefault = true)]
-    public ModCountSettings ModCount { get; set; } = new();
-
     /// <summary>
     /// ExileCore's plugin Order (BaseSettingsPlugin.Order). Plugins render in ascending Order, so a higher value draws
     /// on top. A plugin that sets none, as MinimapIcons does not (its poe1 source, read 2026-11-13), draws at 0;
@@ -206,77 +200,6 @@ public class DisplaySettings
         "\n" +
         "Requires restarting ExileAPI to take effect.")]
     public RangeNode<int> RenderOrder { get; set; } = new(15000, -1000, 100000);
-}
-
-/// <summary>
-/// How the modifier count is drawn, under Display. Which monsters get one, and whether in the world as well, is decided
-/// per alert rule (ShowModCount, DrawModCountInWorld), so a count is always tied to a rule rather than being a
-/// second list of monsters to keep in step with the first.
-/// </summary>
-public class ModCountSettings
-{
-    private const string CentredOnIcon = "Centred on icon";
-    private const string RightOfIcon = "Right of icon";
-    private const string LeftOfIcon = "Left of icon";
-    private const string AboveIcon = "Above icon";
-    private const string BelowIcon = "Below icon";
-
-    /// <summary>
-    /// Where the number sits against the icon. Centred is the default: with the outline it leaves no doubt which icon a
-    /// number belongs to when monsters are packed together. The values are saved as text, so renaming one resets it.
-    /// </summary>
-    [Menu("Position")]
-    public ListNode Position { get; set; } = new()
-    {
-        Values = [CentredOnIcon, RightOfIcon, LeftOfIcon, AboveIcon, BelowIcon],
-        Value = CentredOnIcon,
-    };
-
-    /// <summary>Pixels between the icon's edge and the number, for the positions beside the icon.</summary>
-    [Menu("Gap from icon (px)")]
-    public RangeNode<int> Gap { get; set; } = new(2, 0, 40);
-
-    [Menu("Text scale")]
-    public RangeNode<float> TextScale { get; set; } = new(1.0f, 0.5f, 3.0f);
-
-    /// <summary>
-    /// Eight offset copies in the outline colour under the number. Reads over any terrain without covering the map the
-    /// way a filled box does.
-    /// </summary>
-    [Menu("Draw outline")]
-    public ToggleNode DrawOutline { get; set; } = new(true);
-
-    [Menu("Outline colour")]
-    public ColorNode OutlineColour { get; set; } = new(Color.Black);
-
-    /// <summary>
-    /// A filled box behind the number. Off by default: the outline reads better and hides less of the map.
-    /// </summary>
-    [Menu("Draw background")]
-    public ToggleNode DrawBackground { get; set; } = new(false);
-
-    [Menu("Background colour")]
-    public ColorNode BackgroundColour { get; set; } = new(new Color(0, 0, 0, 200));
-
-    /// <summary>
-    /// Offset from the monster's position to the number's centre: beside an icon of the given size, or on it, as
-    /// Position says, then moved by the rule's own Mod count X offset and Y offset.
-    /// </summary>
-    public Vector2N OffsetFor(AlertRule rule, float iconSize, Vector2N textSize)
-    {
-        var pad = iconSize / 2f + Gap.Value;
-
-        var placed = Position.Value switch
-        {
-            LeftOfIcon => new Vector2N(-pad - textSize.X / 2f, 0),
-            AboveIcon => new Vector2N(0, -pad - textSize.Y / 2f),
-            BelowIcon => new Vector2N(0, pad + textSize.Y / 2f),
-            CentredOnIcon => Vector2N.Zero,
-            _ => new Vector2N(pad + textSize.X / 2f, 0),
-        };
-
-        return placed + new Vector2N(rule.ModCountOffsetX.Value, rule.ModCountOffsetY.Value);
-    }
 }
 
 /// <summary>

@@ -160,7 +160,7 @@ internal sealed class MatchDrawing
                 DrawInWorld(_placements[i].ScreenPoint, matches[i], region);
         }
 
-        DrawCounts(matches, settings.Display.ModCount, onMap: false, region);
+        DrawCounts(matches, onMap: false, region);
 
         if (mapArea is not { } area)
             return;
@@ -180,7 +180,7 @@ internal sealed class MatchDrawing
             }
 
             // Remembered positions first, so a live entity's icon always sits on top of a remembered one.
-            DrawRememberedPositions(remembered, area, settings.Display.ModCount);
+            DrawRememberedPositions(remembered, area);
 
             for (var i = 0; i < matches.Count; i++)
             {
@@ -192,7 +192,7 @@ internal sealed class MatchDrawing
             }
 
             // After every icon, so a number is never buried under one.
-            DrawCounts(matches, settings.Display.ModCount, onMap: true, area);
+            DrawCounts(matches, onMap: true, area);
         }
     }
 
@@ -296,8 +296,7 @@ internal sealed class MatchDrawing
     /// Last known positions of entities not shown live this frame. Drawn from a stored grid position, never from the
     /// entity, which is out of the entity list or about to be.
     /// </summary>
-    private void DrawRememberedPositions(
-        List<RememberedPosition> remembered, RectangleF area, ModCountSettings countSettings)
+    private void DrawRememberedPositions(List<RememberedPosition> remembered, RectangleF area)
     {
         foreach (var entry in remembered)
         {
@@ -321,15 +320,12 @@ internal sealed class MatchDrawing
             // The count is the whole point of remembering these - it is what the kill order is decided on - so it is
             // drawn alongside rather than dropped. Rare affixes are fixed at spawn, so the remembered number stays
             // accurate however long ago it was read.
-            using (_graphics.SetTextScale(countSettings.TextScale.Value))
-            {
-                var text = entry.ModCount.ToString();
-                var size = _graphics.MeasureText(text);
-                var at = point + countSettings.OffsetFor(rule, iconSize, size);
+            var text = entry.ModCount.ToString();
+            var size = _graphics.MeasureText(text);
+            var at = point + CountOffsetOf(rule);
 
-                if (Overlaps(area, at, size))
-                    DrawNumber(text, size, at, rule.ModCountColour.Value, countSettings);
-            }
+            if (Overlaps(area, at, size))
+                DrawNumber(text, size, at, rule.ModCountColour.Value);
         }
     }
 
@@ -338,7 +334,7 @@ internal sealed class MatchDrawing
     /// entity by default so it reads as belonging to that icon rather than to a neighbouring one.
     /// </summary>
     /// <param name="area">The map area for the map, or the draw region for the world.</param>
-    private void DrawCounts(List<RuleMatch> matches, ModCountSettings countSettings, bool onMap, RectangleF area)
+    private void DrawCounts(List<RuleMatch> matches, bool onMap, RectangleF area)
     {
         var any = false;
         foreach (var match in matches)
@@ -350,7 +346,6 @@ internal sealed class MatchDrawing
             }
         }
 
-        // Nothing to draw is the common case, so the text-scale scope is not even entered.
         if (!any)
             return;
 
@@ -359,65 +354,53 @@ internal sealed class MatchDrawing
         // rule, which matters once rules can be counting different things.
         _numberedIds.Clear();
 
-        using (_graphics.SetTextScale(countSettings.TextScale.Value))
+        for (var i = matches.Count - 1; i >= 0; i--)
         {
-            for (var i = matches.Count - 1; i >= 0; i--)
-            {
-                var match = matches[i];
-                var rule = match.Rule;
+            var match = matches[i];
+            var rule = match.Rule;
 
-                if (!rule.ShowModCount || match.ModCount < rule.ModCountMinimum.Value)
-                    continue;
+            if (!rule.ShowModCount || match.ModCount < rule.ModCountMinimum.Value)
+                continue;
 
-                // In the world only for the rules that ask, and checked before the entity is numbered, so a
-                // lower-priority rule that asks still gets its number there.
-                if (!onMap && !rule.DrawModCountInWorld)
-                    continue;
+            // In the world only for the rules that ask, and checked before the entity is numbered, so a lower-priority
+            // rule that asks still gets its number there.
+            if (!onMap && !rule.DrawModCountInWorld)
+                continue;
 
-                if (!_numberedIds.Add(match.EntityId))
-                    continue;
+            if (!_numberedIds.Add(match.EntityId))
+                continue;
 
-                var placement = _placements[i];
+            var placement = _placements[i];
 
-                if (onMap ? !placement.OnMap : !placement.InWorld)
-                    continue;
+            if (onMap ? !placement.OnMap : !placement.InWorld)
+                continue;
 
-                var text = match.ModCount.ToString();
-                var size = _graphics.MeasureText(text);
-                var at = onMap
-                    ? placement.MapPoint + countSettings.OffsetFor(rule, rule.MapIconSize.Value, size)
-                    : placement.ScreenPoint + countSettings.OffsetFor(rule, rule.WorldIconSize.Value, size);
+            var text = match.ModCount.ToString();
+            var size = _graphics.MeasureText(text);
+            var at = (onMap ? placement.MapPoint : placement.ScreenPoint) + CountOffsetOf(rule);
 
-                if (onMap ? Overlaps(area, at, size) : area.Contains(at.X, at.Y))
-                    DrawNumber(text, size, at, rule.ModCountColour.Value, countSettings);
-            }
+            if (onMap ? Overlaps(area, at, size) : area.Contains(at.X, at.Y))
+                DrawNumber(text, size, at, rule.ModCountColour.Value);
         }
     }
 
-    private void DrawNumber(string text, Vector2 size, Vector2 at, Color tint, ModCountSettings settings)
+    /// <summary>Where a rule's number goes, from the icon's centre: its Mod count X offset and Y offset.</summary>
+    private static Vector2 CountOffsetOf(AlertRule rule) =>
+        new(rule.ModCountOffsetX.Value, rule.ModCountOffsetY.Value);
+
+    /// <summary>The number centred on a point, over a black outline.</summary>
+    private void DrawNumber(string text, Vector2 size, Vector2 at, Color tint)
     {
         var pos = new Vector2(at.X - size.X / 2f, at.Y - size.Y / 2f);
-
-        if (settings.DrawBackground)
-        {
-            _graphics.DrawBox(
-                new RectangleF(pos.X - 2f, pos.Y - 1f, size.X + 4f, size.Y + 2f),
-                settings.BackgroundColour.Value);
-        }
 
         // Eight offset copies underneath, which reads over any terrain without covering the map the way a filled box
         // does. Diagonals included: without them the corners of each glyph stay bare and the number still disappears
         // against a busy background.
-        if (settings.DrawOutline)
+        for (var dx = -1; dx <= 1; dx++)
+        for (var dy = -1; dy <= 1; dy++)
         {
-            var outline = settings.OutlineColour.Value;
-
-            for (var dx = -1; dx <= 1; dx++)
-            for (var dy = -1; dy <= 1; dy++)
-            {
-                if (dx != 0 || dy != 0)
-                    _graphics.DrawText(text, new Vector2(pos.X + dx, pos.Y + dy), outline);
-            }
+            if (dx != 0 || dy != 0)
+                _graphics.DrawText(text, new Vector2(pos.X + dx, pos.Y + dy), Color.Black);
         }
 
         _graphics.DrawText(text, pos, tint);
