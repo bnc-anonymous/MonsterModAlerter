@@ -27,6 +27,7 @@ public class MonsterModAlerterSettings : ISettings
 {
     public MonsterModAlerterSettings()
     {
+        RefreshIconsUi = new CustomNode(DrawRefreshIcons);
         ResetAllUi = new CustomNode(DrawResetAll);
         GroupsUi = new CustomNode(() => AlertGroupsEditor.Draw(this));
     }
@@ -41,6 +42,20 @@ public class MonsterModAlerterSettings : ISettings
         if (ImGui.Button("Inspect world entities###mmaInspectEntities"))
             EntityInspector.Open = true;
     });
+
+    /// <summary>
+    /// The button under Inspect world entities that forgets every remembered position and scans again now, so the
+    /// icons show what the rules match at this moment. A monster still loaded is checked again at every scan anyway;
+    /// this is for one out of range when its rule was edited not to match it, whose position alone is kept and cannot
+    /// be checked. Matches already announced do not play their sound again. It raises RefreshIconsRequested, which the
+    /// next Tick answers.
+    /// </summary>
+    [JsonIgnore]
+    public CustomNode RefreshIconsUi { get; set; }
+
+    [JsonIgnore]
+    [IgnoreMenu]
+    public bool RefreshIconsRequested { get; set; }
 
     /// <summary>
     /// The button at the top of the menu that puts every setting back to its default except Enable, and replaces the
@@ -110,6 +125,15 @@ public class MonsterModAlerterSettings : ISettings
 
     [Submenu(CollapsedByDefault = true)]
     public DebugSettings Debug { get; set; } = new();
+
+    private void DrawRefreshIcons()
+    {
+        if (ImGui.Button("Refresh icons###mmaRefreshIcons"))
+            RefreshIconsRequested = true;
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Scans again now and forgets every remembered position.");
+    }
 
     private void DrawResetAll()
     {

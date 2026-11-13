@@ -93,14 +93,23 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     }
 
     /// <summary>
-    /// Drops the announced entities and re-scans now instead of waiting out the scan interval. Drawing settings are
-    /// read per frame, so this is only needed to re-arm sound alerts or to apply a rule change without waiting.
-    /// Remembered positions are dropped too: Refresh now exists to re-derive everything from the current state, and
-    /// keeping ghosts would defeat that.
+    /// Drops the announced entities, then refreshes the icons (RefreshIcons), so every match plays its sound again.
+    /// Drawing settings are read per frame, so this is only needed to re-arm sound alerts or to apply a rule change
+    /// without waiting.
     /// </summary>
     private void ForceRefresh()
     {
         _sound.ForgetAnnounced();
+        RefreshIcons();
+    }
+
+    /// <summary>
+    /// Drops the matches and every remembered position and scans again now instead of waiting out the scan interval,
+    /// so the icons are re-derived from the current state. A remembered position cannot be checked against an edited
+    /// rule, since its entity is out of range, so all of them go.
+    /// </summary>
+    private void RefreshIcons()
+    {
         _scan.Clear();
         _scanTimer.Restart();
 
@@ -145,6 +154,13 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             ForceRefresh();
             LogMessage("Settings and rules reset to defaults", 5f);
             CursorMessage.Show(CursorMessage.Kind.Success, "Settings reset");
+        }
+
+        if (Settings.RefreshIconsRequested)
+        {
+            Settings.RefreshIconsRequested = false;
+            RefreshIcons();
+            CursorMessage.Show(CursorMessage.Kind.Info, "Icons refreshed");
         }
 
         if (Settings.Debug.RefreshRequested)

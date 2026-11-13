@@ -169,8 +169,9 @@ public class AlertRule : ISettings
     /// Keeps the map icon, and the count, at the spot the monster was last seen after it leaves range. Drawn as a live
     /// icon is, so it is a last known position rather than proof the monster is still there. Dropped when the monster
     /// is seen dead, when the player comes near and nothing is there (RememberedPositions.ForgetRadius), when it is
-    /// seen again and no rule matches it, and on area change. Hidden while its rule or the rule's group is switched off,
-    /// and gone with the rule when it is deleted. Shown only with Show on map on, since only map icons are remembered.
+    /// seen again and no rule matches it, on area change, and by Refresh icons. Hidden while its rule or the rule's
+    /// group is switched off, and gone with the rule when it is deleted. Shown only with Show on map on, since only map
+    /// icons are remembered.
     /// </summary>
     [Menu("Remember position",
         "Keep the map icon at the last seen spot after the monster leaves\n" +

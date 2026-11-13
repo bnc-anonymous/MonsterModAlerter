@@ -24,13 +24,13 @@ Each rule sets its own icon, tint and priority, its map icon, its world icon, bo
 ## More per rule
 
 - **Show the number of rare modifiers the monster has** draws that number on its map icon. **Show the number of search matches instead of rare modifiers** draws how many of its modifiers match the search term instead. **Mod count minimum** skips monsters below that count.
-- **Remember position** keeps the icon on the map after the monster leaves range, until it is seen dead, you come near the spot and it is gone, or you change area.
+- **Remember position** keeps the icon on the map after the monster leaves range, until it is seen dead, you come near the spot and it is gone, it stops matching, or you change area. A monster out of range when you edit its rule cannot be checked again, so **Refresh icons**, at the top of the settings, clears every remembered icon and scans again.
 - **Add to seen tally** adds what the rule matches to an on-screen tally for the current area, switched on under **Seen tally**.
 - **Match any entity** tests the rule against everything loaded, not only hostile monsters: critters, chests, shrines. The metadata path is searched as well, so `Metadata/Critters` marks every critter.
 
 ## Inspecting entities
 
-**Inspect world entities**, at the top of the settings, opens a window listing the monsters around you, nearest first, or every entity with **Show all entities** ticked. Open an entry to see what a rule can match it by: its metadata path, its modifiers and its buffs, each in a text box you can select and copy with Ctrl+C. Hovering an entry outlines that entity in the world. **Refresh** reads the list again.
+**Inspect world entities**, at the top of the settings, opens a window listing the monsters around you, nearest first, or every entity with **Show all entities** ticked. Open an entry to see what a rule can match it by: its metadata path, its modifiers and its buffs, each in a text box you can select and copy with Ctrl+C. **Filter** narrows the list to entries whose title, metadata path, name, modifiers or buffs contain the text. With **Show pins** on, each listed entity is marked in the world with its number; hovering an entry turns its pin green and draws a line to it. **Refresh** reads the list again.
 
 ## License
 
