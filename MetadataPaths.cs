@@ -16,6 +16,33 @@ internal static class MetadataPaths
     /// becomes Ferret/Ferret. What is left is what distinguishes one thing from another, which is the whole job of a
     /// name in the tally.
     /// </summary>
+    /// <summary>
+    /// The path without a trailing level tag, e.g. Metadata/Monsters/VaalForgeMan/VaalForgeMan@83 becomes
+    /// Metadata/Monsters/VaalForgeMan/VaalForgeMan, so a path copied into a rule matches the monster at every level.
+    /// The tag is an @ and digits at the end; a path without one is returned as it is.
+    /// </summary>
+    public static string WithoutLevelTag(string path) => LevelTagOf(path) is { } tag ? path[..^tag.Length] : path;
+
+    /// <summary>The trailing level tag, e.g. "@83", or null when the path has none.</summary>
+    public static string LevelTagOf(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return null;
+
+        var at = path.LastIndexOf('@');
+
+        if (at < 0 || at == path.Length - 1)
+            return null;
+
+        for (var i = at + 1; i < path.Length; i++)
+        {
+            if (!char.IsAsciiDigit(path[i]))
+                return null;
+        }
+
+        return path[at..];
+    }
+
     public static string ShortNameOf(string path)
     {
         if (string.IsNullOrEmpty(path))

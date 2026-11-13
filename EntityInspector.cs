@@ -5,6 +5,7 @@ using System.Numerics;
 using ExileCore;
 using ExileCore.PoEMemory.Components;
 using ExileCore.PoEMemory.MemoryObjects;
+using ExileCore.Shared.Enums;
 using ImGuiNET;
 using Graphics = ExileCore.Graphics;
 
@@ -17,9 +18,13 @@ namespace MonsterModAlerter;
 /// settings.
 ///
 /// After DevTree's window of the same name: the list is a snapshot, taken when the window opens and by Refresh, so the
-/// rows do not reorder under the mouse as distances change. Hovering an entity's row or details outlines it in the
-/// world with its bounding box (Graphics.DrawBoundingBoxInWorld from the Render component, as WhereAreYouGoing and
-/// WhereTheWispsAt draw theirs) and draws a line to it from the player, as DevTree does, for one off screen.
+/// rows do not reorder under the mouse as distances change. Hovering an entity's row or details marks it in the world
+/// with DevTree's hovered pin - a disc at its feet, a stalk and its name above - and a line to it from the player, for
+/// one off screen. The game's own outline of a hovered monster cannot be had: the game draws it for the entity under
+/// the mouse, and setting that would mean writing to the game's memory. The bounding box ExileCore can draw
+/// (Render.BoundsNum) was tried and covered the tile rather than the monster (seen in game, 2026-11-13).
+///
+/// The filter matches a word in the metadata path, the name, a mod or a buff, ignoring case.
 /// </summary>
 internal sealed class EntityInspector
 {
@@ -34,8 +39,15 @@ internal sealed class EntityInspector
     /// <summary>AutoExpedition's green, as the cursor message and the craft square use for "this one".</summary>
     private static readonly SharpDX.Color HighlightColour = Colours.FromArgb(255, 90, 255, 120);
 
+    // DevTree's pin at its hovered size: its defaults (foot 4, stalk 100, text 1, in world units and text scale)
+    // doubled by its hovered expansion factor of 2.
+    private const float PinFootRadius = 8f;
+    private const float PinStalkHeight = 200f;
+    private const float PinTextScale = 2f;
+
     private bool _snapshotDue = true;
     private bool _showAllEntities;
+    private string _filter = "";
     private List<Entity> _snapshot = new();
 
     /// <summary>
@@ -70,12 +82,17 @@ internal sealed class EntityInspector
             if (ImGui.Button("Refresh"))
                 _snapshot = SnapshotOf(gameController);
 
-            var shown = _showAllEntities
-                ? _snapshot
-                : _snapshot.Where(entity => Safe.Read(entity, static e => e.Path, "")
-                    .StartsWith(MonsterPathPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
+            ImGui.SetNextItemWidth(-1f);
+            ImGui.InputTextWithHint(
+                "##mmaEntityFilter", "Filter by metadata path, name, mod or buff", ref _filter, 200);
 
-            ImGui.SameLine();
+            var filter = _filter.Trim();
+            var shown = _snapshot
+                .Where(entity => _showAllEntities || Safe.Read(entity, static e => e.Path, "")
+                    .StartsWith(MonsterPathPrefix, StringComparison.OrdinalIgnoreCase))
+                .Where(entity => filter.Length == 0 || MatchesFilter(entity, filter))
+                .ToList();
+
             ImGui.TextDisabled($"{shown.Count} of {_snapshot.Count}, nearest first");
             ImGui.Separator();
 
@@ -115,6 +132,32 @@ internal sealed class EntityInspector
             Highlight(gameController, graphics, hovered);
     }
 
+    /// <summary>
+    /// Whether the filter is part of the entity's metadata path, its name, one of its mods or one of its buffs.
+    /// </summary>
+    private static bool MatchesFilter(Entity entity, string filter)
+    {
+        bool Has(string text) => text?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true;
+
+        return Has(Safe.Read(entity, static e => e.Path, null)) ||
+               Has(NameOf(entity)) ||
+               ModsOf(entity).Any(Has) ||
+               BuffsOf(entity).Any(Has);
+    }
+
+    private static string NameOf(Entity entity) =>
+        Safe.Read(entity, static e => e.TryGetComponent<Render>(out var render) ? render?.Name : null, null) ?? "";
+
+    private static List<string> ModsOf(Entity entity) =>
+        Safe.Read(entity, static e => e.TryGetComponent<ObjectMagicProperties>(out var props)
+            ? props?.Mods?.Where(m => !string.IsNullOrEmpty(m)).ToList()
+            : null, null) ?? [];
+
+    private static List<string> BuffsOf(Entity entity) =>
+        Safe.Read(entity, static e => e.TryGetComponent<Buffs>(out var b)
+            ? b?.BuffsList?.Select(buff => buff?.Name).Where(n => !string.IsNullOrEmpty(n)).ToList()
+            : null, null) ?? [];
+
     /// <summary>Every valid entity with a position, nearest to the player first.</summary>
     private static List<Entity> SnapshotOf(GameController gameController)
     {
@@ -137,33 +180,30 @@ internal sealed class EntityInspector
         var path = e.Path ?? "";
         var rarity = path.StartsWith(MonsterPathPrefix, StringComparison.OrdinalIgnoreCase) ? $"  {e.Rarity}" : "";
         var gone = e.IsValid ? "" : "  (gone)";
-        return $"{MetadataPaths.ShortNameOf(path)}{rarity}  {e.DistancePlayer:0}{gone}";
+        return $"{MetadataPaths.ShortNameOf(MetadataPaths.WithoutLevelTag(path))}{rarity}  {e.DistancePlayer:0}{gone}";
     }, "<unreadable>");
 
     private static void DrawDetailsOf(Entity entity)
     {
         var path = Safe.Read(entity, static e => e.Path, "") ?? "";
-        var name = Safe.Read(entity,
-            static e => e.TryGetComponent<Render>(out var render) ? render?.Name : null, null) ?? "";
+        var name = NameOf(entity);
 
-        CopyableLine("Metadata path", path);
+        // Without the level tag, so a path copied into a rule matches the monster at every level.
+        CopyableLine("Metadata path", MetadataPaths.WithoutLevelTag(path));
         CopyableLine("Name (Render.Name)", name);
 
         var facts = Safe.Read(entity, static e =>
             $"Rarity {e.Rarity}   Hostile {(e.IsHostile ? "yes" : "no")}   Alive {(e.IsAlive ? "yes" : "no")}   " +
-            $"Distance {e.DistancePlayer:0}   Id {e.Id}", "");
+            $"Distance {e.DistancePlayer:0}   Id {e.Id}" +
+            (MetadataPaths.LevelTagOf(e.Path) is { } tag ? $"   Path tag {tag}" : ""), "");
         ImGui.TextDisabled(facts);
 
-        var mods = Safe.Read(entity, static e => e.TryGetComponent<ObjectMagicProperties>(out var props)
-            ? props?.Mods?.Where(m => !string.IsNullOrEmpty(m)).ToList()
-            : null, null) ?? [];
+        var mods = ModsOf(entity);
         var rare = mods.Where(m => m.StartsWith(RuleMatcher.RareModPrefix, StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase).Count();
         CopyableLines("mods", $"Mods (ObjectMagicProperties.Mods): {mods.Count}, {rare} rare", mods);
 
-        var buffs = Safe.Read(entity, static e => e.TryGetComponent<Buffs>(out var b)
-            ? b?.BuffsList?.Select(buff => buff?.Name).Where(n => !string.IsNullOrEmpty(n)).ToList()
-            : null, null) ?? [];
+        var buffs = BuffsOf(entity);
         CopyableLines("buffs", $"Buffs (Buffs.BuffsList): {buffs.Count}", buffs);
     }
 
@@ -192,15 +232,32 @@ internal sealed class EntityInspector
             ImGuiInputTextFlags.ReadOnly);
     }
 
+    /// <summary>
+    /// DevTree's hovered pin on the entity - a disc on the ground at its feet, a stalk up from it and its short name at
+    /// the top - and a line on the ground from the player to it.
+    /// </summary>
     private static void Highlight(GameController gameController, Graphics graphics, Entity entity)
     {
         Safe.Try(() =>
         {
-            if (entity.TryGetComponent<Render>(out var render) && render != null)
-                graphics.DrawBoundingBoxInWorld(entity.PosNum, HighlightColour, render.BoundsNum, render.RotationNum.X);
+            var gridPos = entity.GridPosNum;
+            var feet = gameController.IngameState.Data.ToWorldWithTerrainHeight(gridPos);
+            var camera = gameController.IngameState.Camera;
+            var stalkBottom = camera.WorldToScreen(feet);
+            var stalkTop = camera.WorldToScreen(feet with { Z = feet.Z - PinStalkHeight });
 
             if (gameController.Player is { } player)
-                graphics.DrawLineInWorld(player.GridPosNum, entity.GridPosNum, 2f, HighlightColour);
+                graphics.DrawLineInWorld(player.GridPosNum, gridPos, 2f, HighlightColour);
+
+            graphics.DrawFilledCircleInWorld(feet, PinFootRadius, HighlightColour);
+            graphics.DrawLine(stalkBottom, stalkTop, 2f, HighlightColour);
+
+            using (graphics.SetTextScale(PinTextScale))
+            {
+                var name = MetadataPaths.ShortNameOf(MetadataPaths.WithoutLevelTag(entity.Path));
+                graphics.DrawTextWithBackground(name, stalkTop, HighlightColour,
+                    FontAlign.Center | FontAlign.VerticalCenter, SharpDX.Color.Black);
+            }
         });
     }
 }
