@@ -56,7 +56,7 @@ public class AlertRule : ISettings
 
     /// <summary>
     /// Whether the search term is tested against ObjectMagicProperties.Mods, the internal mod names such as
-    /// TormentHauntedMonsterThief. Every entry is searched, not only the rare affixes Show mod count counts. Does not
+    /// TormentHauntedMonsterThief. Every entry is searched, not only the rare modifiers ShowModCount counts. Does not
     /// affect that count, which always reads the mods.
     /// </summary>
     [Menu("Search mods (ObjectMagicProperties.Mods)")]
@@ -240,7 +240,7 @@ public class AlertRule : ISettings
     /// Buffs are not counted: they come and go with auras and charges and would make it flicker. The Debug section's
     /// overlay lists the entries and which were counted. Drawn as Display's Mod count says.
     /// </summary>
-    [Menu("Show mod count", "The monster's rare modifiers, each counted once.")]
+    [Menu("Show the number of rare modifiers the monster has")]
     public ToggleNode ShowModCount { get; set; } = new(false);
 
     /// <summary>
@@ -248,7 +248,7 @@ public class AlertRule : ISettings
     /// monster with Fire Touched and Cold Touched reads 2. Buffs count only with Search buffs on. Ignored without a
     /// search term, which counts rare modifiers. Shown while the count is shown or gates the rule (Mod count minimum).
     /// </summary>
-    [Menu("Count search matches instead of mod count")]
+    [Menu("Show the number of search matches instead of rare modifiers")]
     [ConditionalDisplay(nameof(UsesModCount))]
     public ToggleNode CountSearchMatches { get; set; } = new(false);
 

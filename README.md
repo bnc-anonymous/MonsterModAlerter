@@ -23,7 +23,7 @@ Each rule sets its own icon, tint and priority, its map icon, its world icon, bo
 
 ## More per rule
 
-- **Show mod count** draws how many rare modifiers the monster has, or with **Count search matches**, how many of its modifiers match the search term. **Mod count minimum** skips monsters below that count.
+- **Show the number of rare modifiers the monster has** draws that number on its map icon. **Show the number of search matches instead of rare modifiers** draws how many of its modifiers match the search term instead. **Mod count minimum** skips monsters below that count.
 - **Remember position** keeps the icon on the map after the monster leaves range, until it is seen dead, you come near the spot and it is gone, or you change area.
 - **Add to seen tally** adds what the rule matches to an on-screen tally for the current area, switched on under **Seen tally**.
 - **Match any entity** tests the rule against everything loaded, not only hostile monsters: critters, chests, shrines. The metadata path is searched as well, so `Metadata/Critters` marks every critter.

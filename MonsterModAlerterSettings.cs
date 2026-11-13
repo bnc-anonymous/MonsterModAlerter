@@ -164,6 +164,11 @@ public class DisplaySettings
     [Menu("Draw multiple matching icons", "Off: only the highest-priority rule's icon.")]
     public ToggleNode DrawMultipleMatchingIcons { get; set; } = new(true);
 
+    /// <summary>How each rule's modifier count looks. Which rules show one, and where, is each rule's own.</summary>
+    [Menu("Mod count", "How the counts look, for the rules that show one.")]
+    [Submenu(CollapsedByDefault = true)]
+    public ModCountSettings ModCount { get; set; } = new();
+
     /// <summary>
     /// ExileCore's plugin Order (BaseSettingsPlugin.Order). Plugins render in ascending Order, so a higher value draws
     /// on top. A plugin that sets none, as MinimapIcons does not (its poe1 source, read 2026-11-13), draws at 0;
@@ -171,11 +176,6 @@ public class DisplaySettings
     /// default of 15000 is above both. ExileCore sorts once, after every plugin is initialised, so a change takes
     /// effect at the next HUD start.
     /// </summary>
-    /// <summary>How each rule's modifier count looks. Which rules show one, and where, is each rule's own.</summary>
-    [Menu("Mod count", "How the counts look, for the rules with Show mod count on.")]
-    [Submenu(CollapsedByDefault = true)]
-    public ModCountSettings ModCount { get; set; } = new();
-
     [Menu("Render order",
         "Plugins draw in this order, lowest first, so a higher value draws\n" +
         "later, over the others. MinimapIcons, for example, draws at 0.\n" +
@@ -186,7 +186,7 @@ public class DisplaySettings
 
 /// <summary>
 /// How the modifier count is drawn, under Display. Which monsters get one, and whether in the world as well, is decided
-/// per alert rule (Show mod count, Draw mod count in world), so a count is always tied to a rule rather than being a
+/// per alert rule (ShowModCount, DrawModCountInWorld), so a count is always tied to a rule rather than being a
 /// second list of monsters to keep in step with the first.
 /// </summary>
 public class ModCountSettings
