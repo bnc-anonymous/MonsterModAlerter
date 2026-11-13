@@ -230,15 +230,16 @@ public class SeenTallySettings
     [IgnoreMenu]
     public bool ClearRequested { get; set; }
 
+    /// <summary>The tally's top-left corner, in pixels from the window's top-left.</summary>
     [Menu("X (px)")]
-    public RangeNode<int> X { get; set; } = new(20, 0, 4000);
+    public RangeNode<int> X { get; set; } = new(1565, 0, 4000);
 
     [Menu("Y (px)")]
-    public RangeNode<int> Y { get; set; } = new(300, 0, 3000);
+    public RangeNode<int> Y { get; set; } = new(1280, 0, 3000);
 
     /// <summary>The longest list drawn. Rows are ordered by count, so the rows left off are the rarest.</summary>
     [Menu("Max rows", "The rarest rows are left off, with a line saying how many.")]
-    public RangeNode<int> MaxRows { get; set; } = new(20, 1, 60);
+    public RangeNode<int> MaxRows { get; set; } = new(5, 1, 60);
 
     [Menu("Text scale")]
     public RangeNode<float> TextScale { get; set; } = new(1.0f, 0.5f, 3.0f);
