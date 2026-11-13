@@ -16,6 +16,14 @@ internal sealed class RememberedPositions
 {
     private readonly Dictionary<uint, RememberedPosition> _byId = new();
 
+    /// <summary>
+    /// How close the player must come to a remembered position, in grid units, before a position with nothing there is
+    /// dropped (ForgetAbsentNear). It must stay inside the range at which monsters load, or a live monster just beyond
+    /// that range would be forgotten while still alive. 120 is the value the Forget radius setting held in play when
+    /// the setting was removed, 2026-11-13; its default had been 60.
+    /// </summary>
+    public const int ForgetRadius = 120;
+
     public int Count => _byId.Count;
 
     public void Remember(RememberedPosition position) => _byId[position.Id] = position;
@@ -33,9 +41,9 @@ internal sealed class RememberedPositions
     /// absence just means out of range.
     /// </summary>
     /// <param name="loadedIds">Every entity the scan saw loaded, whatever its state.</param>
-    public void ForgetAbsentNear(Vector2 playerGridPos, int radius, HashSet<uint> loadedIds)
+    public void ForgetAbsentNear(Vector2 playerGridPos, HashSet<uint> loadedIds)
     {
-        var radiusSquared = (float)radius * radius;
+        const float radiusSquared = (float)ForgetRadius * ForgetRadius;
 
         List<uint> gone = null;
 

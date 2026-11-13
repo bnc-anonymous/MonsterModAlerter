@@ -65,7 +65,7 @@ internal sealed class DebugOverlay
                 nearest = Math.Min(nearest, (float)Math.Sqrt(dx * dx + dy * dy));
             }
 
-            var radius = settings.Scan.ForgetRadius.Value;
+            const int radius = RememberedPositions.ForgetRadius;
             WriteLine($"  nearest stale icon {nearest:0} grid away, forget radius {radius} - " +
                       (nearest <= radius ? "inside, so it would have been dropped" : "walk closer to clear it"),
                 nearest <= radius ? Color.Orange : Color.White);

@@ -117,11 +117,9 @@ public class MonsterModAlerterSettings : ISettings
     }
 }
 
-/// <summary>What the scan considers, and how often it runs. See EntityScan and RuleMatcher.</summary>
+/// <summary>What a rule's search term is tested against. See RuleMatcher.</summary>
 public class ScanSettings
 {
-    public ScanSettings() => RefreshUi = new CustomNode(DrawRefresh);
-
     /// <summary>
     /// Whether search terms are tested against ObjectMagicProperties.Mods, the internal mod names such as
     /// TormentHauntedMonsterThief. Does not affect the rare modifier count, which always reads the mods.
@@ -130,77 +128,11 @@ public class ScanSettings
     public ToggleNode SearchMods { get; set; } = new(true);
 
     /// <summary>
-    /// Whether search terms are tested against the Buffs component's names, such as torment_cutthroat.
+    /// Whether search terms are tested against the Buffs component's names, such as torment_cutthroat. Some monsters
+    /// carry a mod only as a buff.
     /// </summary>
-    [Menu("Search buffs", "Some monsters carry a mod only as a buff.")]
+    [Menu("Search buffs")]
     public ToggleNode SearchBuffs { get; set; } = new(true);
-
-    /// <summary>
-    /// Whether every rule matching an entity draws its icon, stacked in priority order so the highest-priority icon
-    /// sits on top, or only the highest-priority rule. Either way the highest-priority match owns the remembered
-    /// position and the sound.
-    /// </summary>
-    [Menu("Allow multiple matches",
-        "Every rule that matches a monster draws its icon, stacked by\n" +
-        "priority. Off: only the highest-priority rule.")]
-    public ToggleNode AllowMultipleMatches { get; set; } = new(true);
-
-    /// <summary>
-    /// The rarities a monster must have for any monster rule to match it. A rule's own rarity filter intersects with
-    /// this, so it can only narrow it. Not applied to Match any entity rules: a chest has no rarity.
-    /// </summary>
-    [Menu("Rarity filter",
-        "Applies to every rule except Match any entity rules. A rule's\n" +
-        "own rarity filter can only narrow it.")]
-    public RarityFilterSettings Rarity { get; set; } = RarityFilterSettings.RareAndUnique();
-
-    /// <summary>
-    /// Entities further than this from the player are skipped, in Entity.DistancePlayer's units. 0 is unlimited.
-    /// </summary>
-    [Menu("Max distance", "0 = unlimited.")]
-    public RangeNode<int> MaxDistance { get; set; } = new(0, 0, 5000);
-
-    /// <summary>
-    /// How often the entities are re-scanned. Drawing reads positions every frame, so stays smooth regardless.
-    /// </summary>
-    [Menu("Interval (ms)")]
-    public RangeNode<int> IntervalMs { get; set; } = new(250, 50, 2000);
-
-    /// <summary>
-    /// For rules with Remember position on: how close the player must come to a remembered position, in grid units,
-    /// before an icon with nothing there is dropped. A monster killed while the player walks away leaves the entity
-    /// list without ever being seen dead, so this is what clears it. It must stay inside the range at which monsters
-    /// load, or a live monster just beyond that range is forgotten while still alive. See
-    /// RememberedPositions.ForgetAbsentNear.
-    /// </summary>
-    [Menu("Forget radius",
-        "For Remember position: an icon is dropped once the player is this\n" +
-        "close to its spot and nothing is there. Keep it inside the range\n" +
-        "monsters load at.")]
-    public RangeNode<int> ForgetRadius { get; set; } = new(60, 10, 300);
-
-    /// <summary>
-    /// Scans now rather than at the next interval, dropping the remembered positions and letting every match play its
-    /// sound again. Drawing settings apply live without it. It raises RefreshRequested, which the next Tick answers.
-    /// </summary>
-    [JsonIgnore]
-    public CustomNode RefreshUi { get; set; }
-
-    [JsonIgnore]
-    [IgnoreMenu]
-    public bool RefreshRequested { get; set; }
-
-    private void DrawRefresh()
-    {
-        if (ImGui.Button("Refresh now###mmaRefresh"))
-            RefreshRequested = true;
-
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.SetTooltip("Scans now, forgets remembered positions, and lets every match\n" +
-                             "play its sound again.");
-        }
-    }
 }
 
 /// <summary>Where and when the plugin draws, against the game's panels and other plugins.</summary>
@@ -224,10 +156,25 @@ public class DisplaySettings
     public ToggleNode PreventDrawingOverPanels { get; set; } = new(true);
 
     /// <summary>
-    /// ExileCore's plugin Order. Plugins render in ascending Order, so a higher value draws on top. ExileCore sorts
-    /// once, after every plugin is initialised, so a change takes effect at the next HUD start.
+    /// Whether every rule matching an entity draws its icon, stacked in priority order so the highest-priority icon
+    /// sits on top, or only the highest-priority rule's. Either way the highest-priority match owns the remembered
+    /// position and the sound. Also decides whether every matching rule's world label is drawn.
     /// </summary>
-    [Menu("Render order", "Higher draws on top of other plugins. Read when the HUD loads\nthe plugin.")]
+    [Menu("Draw multiple matching icons", "Off: only the highest-priority rule's icon.")]
+    public ToggleNode DrawMultipleMatchingIcons { get; set; } = new(true);
+
+    /// <summary>
+    /// ExileCore's plugin Order (BaseSettingsPlugin.Order). Plugins render in ascending Order, so a higher value draws
+    /// on top. A plugin that sets none, as MinimapIcons does not (its poe1 source, read 2026-11-13), draws at 0, so the
+    /// default of 5000 draws this plugin's icons over MinimapIcons'. ExileCore sorts once, after every plugin is
+    /// initialised, so a change takes effect at the next HUD start.
+    /// </summary>
+    [Menu("Render order",
+        "Plugins draw in this order, lowest first, so a higher value draws\n" +
+        "this plugin over the others. MinimapIcons, for example, draws at\n" +
+        "0, so at the default of 5000 these icons go over its own.\n" +
+        "\n" +
+        "Read when the HUD loads the plugin.")]
     public RangeNode<int> RenderOrder { get; set; } = new(5000, -1000, 100000);
 }
 
@@ -428,6 +375,8 @@ public class SoundSettings
 
 public class DebugSettings
 {
+    public DebugSettings() => RefreshUi = new CustomNode(DrawRefresh);
+
     /// <summary>
     /// The debug overlay, top-left: match and rule counts, the remembered positions, the walk over every entity, map
     /// visibility, the draw region, and each match's icon sizes and map position, so an icon that is not drawn can be
@@ -436,9 +385,39 @@ public class DebugSettings
     /// </summary>
     [Menu("Show overlay", "Lists matches, map visibility and each match's draw position,\ntop-left.")]
     public ToggleNode ShowOverlay { get; set; } = new(false);
+
+    /// <summary>
+    /// How often EntityScan walks ExileCore's entity lists and runs the rules. Drawing reads positions every frame, so
+    /// it stays smooth regardless; a longer interval only delays a newly loaded monster being matched.
+    /// </summary>
+    [Menu("Entity scan interval (ms)")]
+    public RangeNode<int> EntityScanIntervalMs { get; set; } = new(250, 50, 2000);
+
+    /// <summary>
+    /// Scans now rather than at the next interval, dropping the remembered positions and letting every match play its
+    /// sound again. Drawing settings apply live without it. It raises RefreshRequested, which the next Tick answers.
+    /// </summary>
+    [JsonIgnore]
+    public CustomNode RefreshUi { get; set; }
+
+    [JsonIgnore]
+    [IgnoreMenu]
+    public bool RefreshRequested { get; set; }
+
+    private void DrawRefresh()
+    {
+        if (ImGui.Button("Refresh now###mmaRefresh"))
+            RefreshRequested = true;
+
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("Scans now, forgets remembered positions, and lets every match\n" +
+                             "play its sound again.");
+        }
+    }
 }
 
-/// <summary>Which monster rarities pass. Used by the Scan section and by each rule.</summary>
+/// <summary>Which monster rarities a rule matches.</summary>
 [Submenu(CollapsedByDefault = false)]
 public class RarityFilterSettings
 {
@@ -454,7 +433,7 @@ public class RarityFilterSettings
     [Menu("Unique")]
     public ToggleNode Unique { get; set; } = new(true);
 
-    /// <summary>The default for the Scan section and for new rules: rare and unique monsters only.</summary>
+    /// <summary>The default for new rules: rare and unique monsters only.</summary>
     public static RarityFilterSettings RareAndUnique() => new()
     {
         Normal = new ToggleNode(false),

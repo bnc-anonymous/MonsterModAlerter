@@ -55,29 +55,32 @@ public class AlertRule
     public ToggleNode UseRegex { get; set; } = new(false);
 
     /// <summary>
-    /// Off: the rule sees only hostile monsters, and both rarity filters apply. On: it is tested against every loaded
-    /// entity with a position - critters, chests, doors, shrines - with the hostile and rarity checks skipped, and its
-    /// terms also search the metadata path, since most such entities carry neither mods nor buffs. "Metadata/Critters"
-    /// then marks every critter.
+    /// Off: the rule sees only hostile monsters, and its rarity filter applies. On: it is tested against every loaded
+    /// entity with a position - critters, chests, doors, shrines - with the hostile check and the rarity filter
+    /// skipped, and its terms also search the metadata path, since most such entities carry neither mods nor buffs.
+    /// "Metadata/Critters" then marks every critter.
     /// </summary>
     [Menu("Match any entity",
         "Test every loaded entity, not only hostile monsters, and search\n" +
-        "its metadata path too. Rarity filters do not apply.")]
+        "its metadata path too. The rarity filter does not apply.")]
     public ToggleNode AnyEntity { get; set; } = new(false);
 
     [Menu("Path filter")]
     public PathFilterSettings PathFilter { get; set; } = new();
 
-    /// <summary>Intersects with the Scan section's rarity filter: a monster must pass both.</summary>
-    [Menu("Rarity filter", "Narrows the rarity filter under Scan for this rule.")]
+    /// <summary>
+    /// The rarities of monster this rule matches. Not applied with Match any entity on: a chest has no rarity.
+    /// </summary>
+    [Menu("Monster rarity filter")]
     public RarityFilterSettings Rarity { get; set; } = RarityFilterSettings.RareAndUnique();
 
     /// <summary>
-    /// Higher is drawn on top among this plugin's icons. With Allow multiple matches off, only the highest-priority
-    /// rule matching a monster is shown; either way it owns the remembered position, the count and the sound.
+    /// Higher is drawn on top among this plugin's icons. With Draw multiple matching icons off, only the
+    /// highest-priority rule matching a monster is shown; either way it owns the remembered position, the count and the
+    /// sound.
     /// </summary>
     [Menu("Priority",
-        "Higher draws on top. With Allow multiple matches off, only the\n" +
+        "Higher draws on top. With Draw multiple matching icons off, only the\n" +
         "highest-priority rule matching a monster is shown.")]
     public RangeNode<int> Priority { get; set; } = new(0, -100, 100);
 
@@ -120,7 +123,8 @@ public class AlertRule
     /// <summary>
     /// Keeps the map icon, and the count, at the spot the monster was last seen after it leaves range. Drawn as a live
     /// icon is, so it is a last known position rather than proof the monster is still there. Dropped when the monster
-    /// is seen dead, when the player comes within Forget radius and nothing is there, and on area change.
+    /// is seen dead, when the player comes near and nothing is there (RememberedPositions.ForgetRadius), and on area
+    /// change.
     /// </summary>
     [Menu("Remember position",
         "Keep the map icon at the last seen spot after the monster leaves\n" +
@@ -295,7 +299,7 @@ public class AlertRule
         if (AnyEntity?.Value == true)
             term = $"[any] {term}";
 
-        return $"{(Enabled?.Value == true ? "" : "(off) ")}{term}###";
+        return $"{(Enabled?.Value == true ? "" : "(disabled) ")}{term}###";
     }
 
     /// <summary>

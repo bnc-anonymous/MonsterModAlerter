@@ -69,12 +69,24 @@ internal sealed class EntityScan
 
         var matches = new List<RuleMatch>();
 
-        var scanSettings = settings.Scan;
+        var drawMultipleMatchingIcons = settings.Display.DrawMultipleMatchingIcons.Value;
         var matcher = new RuleMatcher(
-            rules, scanSettings.SearchMods, scanSettings.SearchBuffs, scanSettings.AllowMultipleMatches);
+            rules, settings.Scan.SearchMods, settings.Scan.SearchBuffs, drawMultipleMatchingIcons);
 
-        var maxDistance = scanSettings.MaxDistance.Value;
-        var allowMultipleMatches = scanSettings.AllowMultipleMatches.Value;
+        // The rarities some monster rule accepts. A monster of any other rarity is skipped before its components are
+        // read, the cheap gate a global rarity filter used to be, now worked out from the rules themselves.
+        bool acceptsNormal = false, acceptsMagic = false, acceptsRare = false, acceptsUnique = false;
+
+        foreach (var rule in rules)
+        {
+            if (rule.AnyEntity?.Value == true)
+                continue;
+
+            acceptsNormal |= rule.Rarity.Normal;
+            acceptsMagic |= rule.Rarity.Magic;
+            acceptsRare |= rule.Rarity.Rare;
+            acceptsUnique |= rule.Rarity.Unique;
+        }
 
         // Whether anything is asking to see past the monster list at all. When nothing is, the second walk below never
         // happens.
@@ -149,7 +161,7 @@ internal sealed class EntityScan
         if (loadedIds != null &&
             Safe.Read(gameController, static g => g.Player?.GridPosNum, null) is { } playerGridPos)
         {
-            _remembered.ForgetAbsentNear(playerGridPos, scanSettings.ForgetRadius.Value, loadedIds);
+            _remembered.ForgetAbsentNear(playerGridPos, loadedIds);
         }
 
         // Ascending priority so the highest-priority icon is drawn last, i.e. on top.
@@ -158,6 +170,15 @@ internal sealed class EntityScan
         _publishedRemembered = _remembered.Snapshot();
 
         _tally.PublishRows();
+
+        bool RarityAccepted(MonsterRarity rarity) => rarity switch
+        {
+            MonsterRarity.White => acceptsNormal,
+            MonsterRarity.Magic => acceptsMagic,
+            MonsterRarity.Rare => acceptsRare,
+            MonsterRarity.Unique => acceptsUnique,
+            _ => false,
+        };
 
         // An entity from the monster list.
         void OfferMonster(Entity entity)
@@ -173,21 +194,17 @@ internal sealed class EntityScan
 
             loadedIds?.Add(entity.Id);
 
-            // Checked before the range gate, not after: a monster killed while remembered has to have its icon retired,
-            // and this is the only moment it can be known that it died.
+            // Checked before the rarity gate, not after: a monster killed while remembered has to have its icon
+            // retired, and this is the only moment it can be known that it died.
             if (!entity.IsAlive)
             {
                 _remembered.Forget(entity.Id);
                 return;
             }
 
-            if (maxDistance > 0 && entity.DistancePlayer > maxDistance)
-                return;
-
-            // Global filter - the cheap gate that applies to every monster-only alert rule. Rarity is a monster's own
-            // property, so it does not gate the rules that are not asking for one; those would be thrown away wholesale
-            // by a filter set to Rare + Unique.
-            var monsterOk = hostile && scanSettings.Rarity.Allows(entity.Rarity);
+            // Rarity is a monster's own property, so it does not gate the rules that are not asking for one; those
+            // would be thrown away wholesale by it.
+            var monsterOk = hostile && RarityAccepted(entity.Rarity);
 
             if (!monsterOk && !anyEntityRules)
                 return;
@@ -217,9 +234,6 @@ internal sealed class EntityScan
                 return;
             }
 
-            if (maxDistance > 0 && entity.DistancePlayer > maxDistance)
-                return;
-
             if (OfferToRules(entity, monsterOk: false, anyOk: true, checkAlive: false))
                 anyEntityMatches++;
         }
@@ -237,7 +251,7 @@ internal sealed class EntityScan
             // the tally is asking what was here, not which rule drew it.
             bool tally = best.Rule.AddToSeenTally;
 
-            if (allowMultipleMatches)
+            if (drawMultipleMatchingIcons)
             {
                 // Slots are assigned here so drawing never has to group by entity: it just reads the position each icon
                 // was given.

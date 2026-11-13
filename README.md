@@ -17,7 +17,7 @@ Each rule has a **Search term**, matched against the names of a monster's modifi
 - **Several terms**, separated by commas, must all be present: `mod1,mod2` marks only monsters carrying both.
 - **Use regex** treats each term as a regular expression: `MonsterMod.*Touched` matches every Touched modifier.
 - **Path filter** matches the monster's metadata path, such as `Metadata/Monsters/BeehiveBehemoth`. A rule with a path filter and no search term marks every monster on that path.
-- **Rarity filter** narrows the rarity filter in the **Scan** section for one rule.
+- **Monster rarity filter** sets which rarities of monster the rule matches: rare and unique by default.
 
 Each rule sets its own icon, tint, map and world icon sizes, priority and sound. Sounds are files in the HUD's `Sounds` folder, named without the extension.
 

@@ -121,7 +121,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         if (IsBound(toggleKey) && toggleKey.PressedOnce())
             Settings.SeenTally.Show.Value = !Settings.SeenTally.Show.Value;
 
-        if (_scanTimer.ElapsedMilliseconds < Settings.Scan.IntervalMs)
+        if (_scanTimer.ElapsedMilliseconds < Settings.Debug.EntityScanIntervalMs)
             return null;
 
         _scanTimer.Restart();
@@ -145,9 +145,9 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             CursorMessage.Show(CursorMessage.Kind.Success, "Settings reset");
         }
 
-        if (Settings.Scan.RefreshRequested)
+        if (Settings.Debug.RefreshRequested)
         {
-            Settings.Scan.RefreshRequested = false;
+            Settings.Debug.RefreshRequested = false;
             ForceRefresh();
             CursorMessage.Show(CursorMessage.Kind.Info, "Refreshed");
         }

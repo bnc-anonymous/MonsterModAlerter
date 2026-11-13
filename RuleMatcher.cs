@@ -21,7 +21,7 @@ internal sealed class RuleMatcher
     private readonly AlertRule[] _rules;
     private readonly bool _searchMods;
     private readonly bool _searchBuffs;
-    private readonly bool _allowMultipleMatches;
+    private readonly bool _drawMultipleMatchingIcons;
 
     /// <summary>The entity's mod and buff names, gathered once and tested against every rule.</summary>
     private readonly List<string> _modAndBuffNames = new(16);
@@ -31,17 +31,17 @@ internal sealed class RuleMatcher
 
     private readonly List<RuleMatch> _matchesOfEntity = new(4);
 
-    public RuleMatcher(AlertRule[] rules, bool searchMods, bool searchBuffs, bool allowMultipleMatches)
+    public RuleMatcher(AlertRule[] rules, bool searchMods, bool searchBuffs, bool drawMultipleMatchingIcons)
     {
         _rules = rules;
         _searchMods = searchMods;
         _searchBuffs = searchBuffs;
-        _allowMultipleMatches = allowMultipleMatches;
+        _drawMultipleMatchingIcons = drawMultipleMatchingIcons;
     }
 
     /// <summary>
-    /// Every rule that matched the entity last passed to BestMatchOf, in rule order. Filled only when Allow multiple
-    /// matches is on.
+    /// Every rule that matched the entity last passed to BestMatchOf, in rule order. Filled only when Draw multiple
+    /// matching icons is on.
     /// </summary>
     public List<RuleMatch> MatchesOfEntity => _matchesOfEntity;
 
@@ -121,7 +121,7 @@ internal sealed class RuleMatcher
 
             // Already holding something this rule cannot outrank. Skipped when collecting every match, where losing on
             // priority is not a reason to be left out.
-            if (!_allowMultipleMatches && best != null && rule.Priority.Value <= best.Rule.Priority.Value)
+            if (!_drawMultipleMatchingIcons && best != null && rule.Priority.Value <= best.Rule.Priority.Value)
                 continue;
 
             if (rule.PathFilter?.Matches(path) == false)
@@ -197,7 +197,7 @@ internal sealed class RuleMatcher
         // the remembered icon and the alert sound.
         RuleMatch Keep(RuleMatch match)
         {
-            if (_allowMultipleMatches)
+            if (_drawMultipleMatchingIcons)
                 _matchesOfEntity.Add(match);
 
             return best == null || match.Rule.Priority.Value > best.Rule.Priority.Value ? match : best;
