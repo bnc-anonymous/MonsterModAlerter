@@ -191,7 +191,7 @@ public class AlertRule : ISettings
 
     [Menu("Draw icon")]
     [ConditionalDisplay(nameof(ShowInWorld))]
-    public ToggleNode DrawWorldIcon { get; set; } = new(true);
+    public ToggleNode DrawWorldIcon { get; set; } = new(false);
 
     [Menu("World icon size (px)")]
     [ConditionalDisplay(nameof(ShowsWorldIcon))]
@@ -222,7 +222,7 @@ public class AlertRule : ISettings
     /// </summary>
     [Menu("Draw label")]
     [ConditionalDisplay(nameof(ShowInWorld))]
-    public ToggleNode DrawLabel { get; set; } = new(false);
+    public ToggleNode DrawLabel { get; set; } = new(true);
 
     [Menu("Label", "Blank: the matched mod, buff or path.")]
     [ConditionalDisplay(nameof(ShowsLabel))]
