@@ -9,6 +9,8 @@ An ExileApi plugin for Path of Exile 1 that marks monsters by their modifiers, b
 
 ![The settings with an example group open, beside the large map marking rare monsters with icons, modifier counts and labels](images/1.jpg)
 
+![The Inspect world entities window filtered to rare monsters, one opened to show its metadata path, modifiers and buffs, beside the numbered pins in the world](images/2.jpg)
+
 ## Install
 
 Install using **PluginUpdater**: Add > paste this plugin's URL: `https://github.com/bnc-anonymous/MonsterModAlerter` > Clone
