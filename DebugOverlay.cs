@@ -40,14 +40,14 @@ internal sealed class DebugOverlay
         WriteLine($"[{_pluginName}] matches={matches.Count}  rules={settings.Rules.Content.Count}  " +
                   $"remembered={scan.RememberedCount} (drawn stale={outOfRange.Count})", Color.White);
 
-        // The second walk is the one that is easy to be wrong about: entities=0 says no rule asked for anything past the
-        // monster list, which is the first thing to check when a critter rule draws nothing at all.
+        // The second walk is the one that is easy to be wrong about: entities=0 says no rule asked for anything past
+        // the monster list, which is the first thing to check when a critter rule draws nothing at all.
         WriteLine($"  any-entity walk: entities={scan.AnyEntityWalkCount}  matches outside the monster gates=" +
                   $"{scan.AnyEntityMatchCount}  seen this map={tally.KindCount} kinds",
             scan.AnyEntityWalkCount > 0 ? Color.LightGreen : Color.White);
 
-        // The nearest remembered position and whether it is inside the forget radius: if an icon is lingering, this says
-        // whether the player is simply not close enough yet to disprove it.
+        // The nearest remembered position and whether it is inside the forget radius: if an icon is lingering, this
+        // says whether the player is simply not close enough yet to disprove it.
         if (outOfRange.Count > 0 && gameController?.Player != null)
         {
             var here = gameController.Player.GridPosNum;
@@ -66,7 +66,8 @@ internal sealed class DebugOverlay
                 nearest <= radius ? Color.Orange : Color.White);
         }
 
-        WriteLine($"smallMap={ingameUi.Map.SmallMiniMap.IsVisibleLocal}  largeMap={ingameUi.Map.LargeMap.IsVisibleLocal}  " +
+        WriteLine($"smallMap={ingameUi.Map.SmallMiniMap.IsVisibleLocal}  " +
+                  $"largeMap={ingameUi.Map.LargeMap.IsVisibleLocal}  " +
                   $"minimapVisible={minimapVisible}  onlyLarge={settings.DrawOnlyOnLargeMap.Value}",
             minimapVisible ? Color.LightGreen : Color.Orange);
         WriteLine($"region=({region.Left:0},{region.Top:0})-({region.Right:0},{region.Bottom:0})  " +

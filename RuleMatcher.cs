@@ -47,11 +47,12 @@ internal sealed class RuleMatcher
 
     /// <summary>
     /// Returns the highest-priority rule matching this entity, so one entity yields one icon rather than a stack of
-    /// overlapping ones. A rule matches only when every one of its comma-separated terms is found somewhere on the entity.
+    /// overlapping ones. A rule matches only when every one of its comma-separated terms is found somewhere on the
+    /// entity.
     /// </summary>
     /// <param name="monsterOk">
-    /// Whether this entity qualifies as a monster this scan: hostile, alive and past the global rarity filter. Rules that
-    /// were not asked to look further than monsters are skipped when it is false.
+    /// Whether this entity qualifies as a monster this scan: hostile, alive and past the global rarity filter. Rules
+    /// that were not asked to look further than monsters are skipped when it is false.
     /// </param>
     /// <param name="anyOk">Whether Match Any Entity rules should be offered this entity.</param>
     public RuleMatch BestMatchOf(Entity entity, bool monsterOk, bool anyOk, bool checkAlive)
@@ -64,7 +65,8 @@ internal sealed class RuleMatcher
         _countedNames.Clear();
 
         // Counted here rather than in a second pass, so the number comes from the same read as the matching. Modifiers
-        // only: buffs come and go with auras and charges, and folding them in would make the number flicker as you moved.
+        // only: buffs come and go with auras and charges, and folding them in would make the number flicker as you
+        // moved.
         var modCount = 0;
 
         if (entity.TryGetComponent<ObjectMagicProperties>(out var magicProps) && magicProps?.Mods is { } mods)
@@ -99,6 +101,7 @@ internal sealed class RuleMatcher
         // No early-out on an empty name list: a rule can match on the monster filter alone, and such a rule must still
         // fire for a monster carrying no mods or buffs at all.
         RuleMatch best = null;
+        var entityId = entity.Id;
         var path = entity.Path;
 
         foreach (var rule in _rules)
@@ -111,7 +114,8 @@ internal sealed class RuleMatcher
                 continue;
 
             // Per-rule rarity intersects with the global filter, so a rule can only narrow it. Skipped alongside the
-            // global one for a rule that is not asking for monsters, for the same reason: a chest has no rarity to pass.
+            // global one for a rule that is not asking for monsters, for the same reason: a chest has no rarity to
+            // pass.
             if (!anyEntity && !rule.Rarity.Allows(entity.Rarity))
                 continue;
 
@@ -137,7 +141,7 @@ internal sealed class RuleMatcher
                 if (modCount < rule.ModCountMinimum.Value)
                     continue;
 
-                best = Keep(new RuleMatch(entity, rule, rule.Metadata.Describe(), modCount, checkAlive));
+                best = Keep(new RuleMatch(entity, entityId, rule, rule.Metadata.Describe(), modCount, checkAlive));
                 continue;
             }
 
@@ -157,9 +161,9 @@ internal sealed class RuleMatcher
                     ? FirstNameMatching(_modAndBuffNames, patterns[i])
                     : FirstNameContaining(_modAndBuffNames, terms[i]);
 
-                // Most things that are not monsters carry no mods and no buffs, so their metadata path is the only thing
-                // a term can match. Offered to these rules only: adding it for monster rules would quietly widen every
-                // rule already written.
+                // Most things that are not monsters carry no mods and no buffs, so their metadata path is the only
+                // thing a term can match. Offered to these rules only: adding it for monster rules would quietly widen
+                // every rule already written.
                 if (hit == null && anyEntity && PathMatches(path, rule, terms[i], patterns, i))
                     hit = MetadataPaths.ShortNameOf(path);
 
@@ -183,7 +187,7 @@ internal sealed class RuleMatcher
                 if (shown < rule.ModCountMinimum.Value)
                     continue;
 
-                best = Keep(new RuleMatch(entity, rule, display, shown, checkAlive));
+                best = Keep(new RuleMatch(entity, entityId, rule, display, shown, checkAlive));
             }
         }
 
@@ -203,9 +207,9 @@ internal sealed class RuleMatcher
     /// <summary>
     /// How many of the entity's distinct mod and buff names this rule's terms match.
     ///
-    /// Any term counts, not all of them: the terms are ANDed to decide whether the rule fires at all, and by this point it
-    /// has. Asking "how many match" then means how many entries any of them picked out, which for the usual single-term
-    /// rule is exactly the number of hits.
+    /// Any term counts, not all of them: the terms are ANDed to decide whether the rule fires at all, and by this point
+    /// it has. Asking "how many match" then means how many entries any of them picked out, which for the usual
+    /// single-term rule is exactly the number of hits.
     /// </summary>
     /// <param name="path">
     /// The entity's metadata path when this rule searches it too (Match Any Entity), otherwise null. Counted like any

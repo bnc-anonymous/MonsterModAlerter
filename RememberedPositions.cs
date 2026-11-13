@@ -27,10 +27,10 @@ internal sealed class RememberedPositions
     /// <summary>
     /// Drops remembered positions for entities that are no longer there.
     ///
-    /// Seeing a monster die is not enough on its own: kill one and walk away, and it leaves the entity list without ever
-    /// being observed dead, so its icon would sit on the map for the rest of the zone. Absence from the entity list is
-    /// only evidence of that when the player is close enough that the game would have loaded it - further out, absence
-    /// just means out of range.
+    /// Seeing a monster die is not enough on its own: kill one and walk away, and it leaves the entity list without
+    /// ever being observed dead, so its icon would sit on the map for the rest of the zone. Absence from the entity
+    /// list is only evidence of that when the player is close enough that the game would have loaded it - further out,
+    /// absence just means out of range.
     /// </summary>
     /// <param name="loadedIds">Every entity the scan saw loaded, whatever its state.</param>
     public void ForgetAbsentNear(Vector2 playerGridPos, int radius, HashSet<uint> loadedIds)
@@ -71,7 +71,7 @@ internal sealed class RememberedPositions
 
         var liveIds = new HashSet<uint>(live.Count);
         foreach (var match in live)
-            liveIds.Add(match.Entity.Id);
+            liveIds.Add(match.EntityId);
 
         var stale = new List<RememberedPosition>(_byId.Count);
         foreach (var entry in _byId.Values)

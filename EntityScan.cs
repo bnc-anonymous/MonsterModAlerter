@@ -33,8 +33,8 @@ internal sealed class EntityScan
     public int RememberedCount => _remembered.Count;
 
     /// <summary>
-    /// How many entities the last scan's walk over every entity covered, for the debug overlay. 0 when no rule asked for
-    /// that walk.
+    /// How many entities the last scan's walk over every entity covered, for the debug overlay. 0 when no rule asked
+    /// for that walk.
     /// </summary>
     public int AnyEntityWalkCount { get; private set; }
 
@@ -94,51 +94,27 @@ internal sealed class EntityScan
 
         var anyEntityMatches = 0;
 
-        foreach (var entity in gameController.EntityListWrapper.ValidEntitiesByType[EntityType.Monster])
+        var monsters = Safe.Read(gameController,
+            static g => g.EntityListWrapper.ValidEntitiesByType[EntityType.Monster], null);
+
+        // Without the monster list nothing looks loaded, and every remembered position near the player would be
+        // forgotten, so the scan publishes nothing and the last one stands.
+        if (monsters == null)
+            return;
+
+        foreach (var entity in monsters)
         {
-            if (entity == null)
-                continue;
-
-            offeredIds?.Add(entity.Id);
-
-            // Non-hostile things in this list are still offered to Match Any Entity rules below - they are only
-            // disqualified from being a monster, which is what those rules are for.
-            var hostile = entity.IsHostile;
-
-            if (!hostile && !anyEntityRules)
-                continue;
-
-            loadedIds?.Add(entity.Id);
-
-            // Checked before the range gate, not after: a monster killed while remembered has to have its icon retired,
-            // and this is the only moment it can be known that it died.
-            if (!entity.IsAlive)
-            {
-                _remembered.Forget(entity.Id);
-                continue;
-            }
-
-            if (maxDistance > 0 && entity.DistancePlayer > maxDistance)
-                continue;
-
-            // Global filter - the cheap gate that applies to every monster-only alert rule. Rarity is a monster's own
-            // property, so it does not gate the rules that are not asking for one; those would be thrown away wholesale
-            // by a filter set to Rare + Unique.
-            var monsterOk = hostile && settings.Rarity.Allows(entity.Rarity);
-
-            if (!monsterOk && !anyEntityRules)
-                continue;
-
-            if (OfferToRules(entity, monsterOk, anyEntityRules, checkAlive: true) && !monsterOk)
-                anyEntityMatches++;
+            // An entity that cannot be read is skipped, not the whole scan.
+            if (entity != null)
+                Safe.Try(() => OfferMonster(entity));
         }
 
         if (anyEntityRules)
         {
             // Everything the game has loaded, monsters included - the monster list is a subset of it, which is why the
-            // ids already offered are skipped. Only entered when a rule asks for it, since this is the whole entity list
-            // rather than one bucket of it.
-            var all = gameController.EntityListWrapper.Entities;
+            // ids already offered are skipped. Only entered when a rule asks for it, since this is the whole entity
+            // list rather than one bucket of it.
+            var all = Safe.Read(gameController, static g => g.EntityListWrapper.Entities, null);
             AnyEntityWalkCount = all?.Count ?? 0;
 
             if (all != null)
@@ -147,37 +123,14 @@ internal sealed class EntityScan
                 {
                     foreach (var entity in all)
                     {
-                        if (entity == null || offeredIds.Contains(entity.Id) || !entity.IsValid)
-                            continue;
-
-                        // Anything without a position cannot be drawn on the map or in the world, and asking one how
-                        // far away it is is what would throw. This is also the line between things that are somewhere
-                        // and bookkeeping entities.
-                        if (!entity.HasComponent<Positioned>())
-                            continue;
-
-                        loadedIds?.Add(entity.Id);
-
-                        // A door or a chest has no life to lose, so absence of the component means alive here rather
-                        // than dead - the opposite of what IsAlive would answer.
-                        if (IsDead(entity))
-                        {
-                            _remembered.Forget(entity.Id);
-                            continue;
-                        }
-
-                        if (maxDistance > 0 && entity.DistancePlayer > maxDistance)
-                            continue;
-
-                        if (OfferToRules(entity, monsterOk: false, anyOk: true, checkAlive: false))
-                            anyEntityMatches++;
+                        if (entity != null)
+                            Safe.Try(() => OfferOther(entity));
                     }
                 }
                 catch (InvalidOperationException)
                 {
                     // The HUD adds and removes entities on its own thread. If it did so mid-walk, this scan is simply
-                    // abandoned - the next one is 250ms away and will see the settled list. Deliberately narrow:
-                    // anything else is a bug worth surfacing.
+                    // abandoned - the next one is 250ms away and will see the settled list.
                 }
             }
         }
@@ -188,8 +141,11 @@ internal sealed class EntityScan
 
         AnyEntityMatchCount = anyEntityMatches;
 
-        if (loadedIds != null && gameController?.Player is { } player)
-            _remembered.ForgetAbsentNear(player.GridPosNum, settings.ForgetRadius.Value, loadedIds);
+        if (loadedIds != null &&
+            Safe.Read(gameController, static g => g.Player?.GridPosNum, null) is { } playerGridPos)
+        {
+            _remembered.ForgetAbsentNear(playerGridPos, settings.ForgetRadius.Value, loadedIds);
+        }
 
         // Ascending priority so the highest-priority icon is drawn last, i.e. on top.
         matches.Sort((a, b) => a.Rule.Priority.Value.CompareTo(b.Rule.Priority.Value));
@@ -197,6 +153,71 @@ internal sealed class EntityScan
         _outOfRange = _remembered.OutOfRangeOf(matches);
 
         _tally.PublishRows();
+
+        // An entity from the monster list.
+        void OfferMonster(Entity entity)
+        {
+            offeredIds?.Add(entity.Id);
+
+            // Non-hostile things in this list are still offered to Match Any Entity rules - they are only disqualified
+            // from being a monster, which is what those rules are for.
+            var hostile = entity.IsHostile;
+
+            if (!hostile && !anyEntityRules)
+                return;
+
+            loadedIds?.Add(entity.Id);
+
+            // Checked before the range gate, not after: a monster killed while remembered has to have its icon retired,
+            // and this is the only moment it can be known that it died.
+            if (!entity.IsAlive)
+            {
+                _remembered.Forget(entity.Id);
+                return;
+            }
+
+            if (maxDistance > 0 && entity.DistancePlayer > maxDistance)
+                return;
+
+            // Global filter - the cheap gate that applies to every monster-only alert rule. Rarity is a monster's own
+            // property, so it does not gate the rules that are not asking for one; those would be thrown away wholesale
+            // by a filter set to Rare + Unique.
+            var monsterOk = hostile && settings.Rarity.Allows(entity.Rarity);
+
+            if (!monsterOk && !anyEntityRules)
+                return;
+
+            if (OfferToRules(entity, monsterOk, anyEntityRules, checkAlive: true) && !monsterOk)
+                anyEntityMatches++;
+        }
+
+        // An entity from the whole list that the monster walk did not already offer.
+        void OfferOther(Entity entity)
+        {
+            if (offeredIds.Contains(entity.Id) || !entity.IsValid)
+                return;
+
+            // Anything without a position cannot be drawn on the map or in the world, and asking one how far away it is
+            // is what would throw. This is also the line between things that are somewhere and bookkeeping entities.
+            if (!entity.HasComponent<Positioned>())
+                return;
+
+            loadedIds?.Add(entity.Id);
+
+            // A door or a chest has no life to lose, so absence of the component means alive here rather than dead -
+            // the opposite of what IsAlive would answer.
+            if (IsDead(entity))
+            {
+                _remembered.Forget(entity.Id);
+                return;
+            }
+
+            if (maxDistance > 0 && entity.DistancePlayer > maxDistance)
+                return;
+
+            if (OfferToRules(entity, monsterOk: false, anyOk: true, checkAlive: false))
+                anyEntityMatches++;
+        }
 
         // Runs the rules against one entity and files whatever they said. Returns whether anything matched, so the
         // caller can count what the second walk is contributing.
@@ -213,8 +234,8 @@ internal sealed class EntityScan
 
             if (allowMultipleMatches)
             {
-                // Slots are assigned here so drawing never has to group by entity: it just reads the position each
-                // icon was given.
+                // Slots are assigned here so drawing never has to group by entity: it just reads the position each icon
+                // was given.
                 var matchesOfEntity = matcher.MatchesOfEntity;
 
                 for (var i = 0; i < matchesOfEntity.Count; i++)

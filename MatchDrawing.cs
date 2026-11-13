@@ -10,8 +10,8 @@ using RectangleF = SharpDX.RectangleF;
 namespace MonsterModAlerter;
 
 /// <summary>
-/// Draws the scan's matches and remembered positions: icons on the minimap and large map, icons, boxes and labels in the
-/// world, and the modifier counts.
+/// Draws the scan's matches and remembered positions: icons on the minimap and large map, icons, boxes and labels in
+/// the world, and the modifier counts.
 /// </summary>
 internal sealed class MatchDrawing
 {
@@ -20,17 +20,29 @@ internal sealed class MatchDrawing
 
     private readonly Graphics _graphics;
 
+    /// <summary>One per match, in the same order, refilled every frame by ReadPlacements.</summary>
+    private readonly List<Placement> _placements = new();
+
     /// <summary>Entities that already have a count this frame; refilled by DrawModCounts.</summary>
     private readonly HashSet<uint> _numberedIds = new();
+
+    /// <summary>
+    /// Where one match is drawn this frame. Read once per match, so the icon pass and the count pass agree and neither
+    /// reads the game. The default, for an entity that is gone, dead or unreadable, draws nothing.
+    /// </summary>
+    /// <param name="OnMap">Drawn on the minimap or large map, at MapPoint.</param>
+    /// <param name="InWorld">Drawn in the world, at ScreenPoint.</param>
+    private readonly record struct Placement(bool OnMap, Vector2 MapPoint, bool InWorld, Vector2 ScreenPoint);
 
     public MatchDrawing(Graphics graphics) => _graphics = graphics;
 
     /// <summary>
     /// Full window, minus whatever the open side panels cover. Anything drawn outside this would appear on top of the
-    /// panel, which is what Limit Draw Region exists to prevent. The inventory and stash only cover part of the screen, so
-    /// rather than hiding everything the drawable area shrinks to the part they leave uncovered, the way Radar does.
+    /// panel, which is what Limit Draw Region exists to prevent. The inventory and stash only cover part of the screen,
+    /// so rather than hiding everything the drawable area shrinks to the part they leave uncovered, the way Radar does.
     /// </summary>
-    public static RectangleF DrawRegionOf(GameController gameController, IngameUIElements ingameUi, bool limitDrawRegion)
+    public static RectangleF DrawRegionOf(
+        GameController gameController, IngameUIElements ingameUi, bool limitDrawRegion)
     {
         var region = gameController.Window.GetWindowRectangleTimeCache with { Location = SharpDX.Vector2.Zero };
 
@@ -54,38 +66,63 @@ internal sealed class MatchDrawing
         if (minimapVisible)
             DrawRememberedPositions(outOfRange, region, settings.ModCount);
 
-        foreach (var match in matches)
+        ReadPlacements(gameController, matches, minimapVisible, settings.World.Enable);
+
+        for (var i = 0; i < matches.Count; i++)
         {
-            if (!match.Entity.IsValid || (match.CheckAlive && !match.Entity.IsAlive))
-                continue;
+            var placement = _placements[i];
+            var match = matches[i];
 
-            if (minimapVisible && match.Rule.ShowOnMinimap)
-                DrawOnMinimap(match, region);
+            if (placement.OnMap && region.Contains(placement.MapPoint.X, placement.MapPoint.Y))
+                DrawIcon(placement.MapPoint, match.Rule.IconSize.Value, match.Rule);
 
-            if (settings.World.Enable && match.Rule.ShowInWorld)
-                DrawInWorld(gameController, settings.World, match, region);
+            if (placement.InWorld)
+                DrawInWorld(settings.World, placement.ScreenPoint, match, region);
         }
 
         // A second pass, after every icon, so a number is never buried under one.
-        DrawModCounts(gameController, settings, matches, region, minimapVisible);
+        DrawModCounts(settings, matches, region, minimapVisible);
     }
 
-    // GridToMap handles the small minimap and the open large map, including camera rotation and per-cell terrain height.
-    private void DrawOnMinimap(RuleMatch match, RectangleF region)
+    private void ReadPlacements(
+        GameController gameController, List<RuleMatch> matches, bool minimapVisible, bool worldEnabled)
     {
-        var gridPos = match.Entity.GridPosNum;
-        var point = _graphics.GridToMap(gridPos, gridPos);
+        _placements.Clear();
 
-        if (!region.Contains(point.X, point.Y))
-            return;
+        foreach (var match in matches)
+        {
+            var state = (Drawing: this, GameController: gameController, Match: match,
+                OnMap: minimapVisible && match.Rule.ShowOnMinimap, InWorld: worldEnabled && match.Rule.ShowInWorld);
 
-        DrawIcon(point, match.Rule.IconSize.Value, match.Rule);
+            _placements.Add(Safe.Read(state,
+                static s => s.Drawing.PlacementOf(s.GameController, s.Match, s.OnMap, s.InWorld), default));
+        }
     }
 
-    private void DrawInWorld(GameController gameController, WorldDrawSettings world, RuleMatch match, RectangleF region)
+    // GridToMap handles the small minimap and the open large map, including camera rotation and per-cell terrain
+    // height.
+    private Placement PlacementOf(GameController gameController, RuleMatch match, bool onMap, bool inWorld)
     {
-        var screenPos = gameController.IngameState.Camera.WorldToScreen(match.Entity.PosNum);
+        var entity = match.Entity;
 
+        if (!entity.IsValid || (match.CheckAlive && !entity.IsAlive))
+            return default;
+
+        var mapPoint = default(Vector2);
+
+        if (onMap)
+        {
+            var gridPos = entity.GridPosNum;
+            mapPoint = _graphics.GridToMap(gridPos, gridPos);
+        }
+
+        var screenPoint = inWorld ? gameController.IngameState.Camera.WorldToScreen(entity.PosNum) : default;
+
+        return new Placement(onMap, mapPoint, inWorld, screenPoint);
+    }
+
+    private void DrawInWorld(WorldDrawSettings world, Vector2 screenPos, RuleMatch match, RectangleF region)
+    {
         if (!region.Contains(screenPos.X, screenPos.Y))
             return;
 
@@ -136,10 +173,11 @@ internal sealed class MatchDrawing
     }
 
     /// <summary>
-    /// Last known positions of entities that have dropped out of range. Drawn from a stored grid position, never from the
-    /// entity: by definition it is no longer in the entity list.
+    /// Last known positions of entities that have dropped out of range. Drawn from a stored grid position, never from
+    /// the entity: by definition it is no longer in the entity list.
     /// </summary>
-    private void DrawRememberedPositions(List<RememberedPosition> stale, RectangleF region, ModCountSettings countSettings)
+    private void DrawRememberedPositions(
+        List<RememberedPosition> stale, RectangleF region, ModCountSettings countSettings)
     {
         if (stale.Count == 0)
             return;
@@ -150,8 +188,10 @@ internal sealed class MatchDrawing
             if (!rule.ShowOnMinimap)
                 continue;
 
-            var point = _graphics.GridToMap(entry.GridPos, entry.GridPos);
-            if (!region.Contains(point.X, point.Y))
+            var mapPoint = Safe.Read((Graphics: _graphics, entry.GridPos),
+                static s => (Vector2?)s.Graphics.GridToMap(s.GridPos, s.GridPos), null);
+
+            if (mapPoint is not { } point || !region.Contains(point.X, point.Y))
                 continue;
 
             DrawIcon(point, rule.IconSize.Value, rule);
@@ -178,8 +218,7 @@ internal sealed class MatchDrawing
     /// belonging to that dot rather than to a neighbouring one.
     /// </summary>
     private void DrawModCounts(
-        GameController gameController, MonsterModAlerterSettings settings, List<RuleMatch> matches, RectangleF region,
-        bool minimapVisible)
+        MonsterModAlerterSettings settings, List<RuleMatch> matches, RectangleF region, bool minimapVisible)
     {
         var countSettings = settings.ModCount;
         var alsoWorld = countSettings.DrawInWorld;
@@ -216,28 +255,28 @@ internal sealed class MatchDrawing
                 if (!rule.ShowModCount || match.ModCount < rule.ModCountMinimum.Value)
                     continue;
 
-                if (!_numberedIds.Add(match.Entity.Id))
+                if (!_numberedIds.Add(match.EntityId))
                     continue;
 
-                if (!match.Entity.IsValid || (match.CheckAlive && !match.Entity.IsAlive))
+                var placement = _placements[i];
+
+                if (!placement.OnMap && !placement.InWorld)
                     continue;
 
                 var text = match.ModCount.ToString();
                 var size = _graphics.MeasureText(text);
                 var tint = rule.ModCountColor.Value;
 
-                if (minimapVisible && rule.ShowOnMinimap)
+                if (placement.OnMap)
                 {
-                    var grid = match.Entity.GridPosNum;
-                    var at = _graphics.GridToMap(grid, grid) + countSettings.OffsetFor(rule.IconSize.Value, size);
+                    var at = placement.MapPoint + countSettings.OffsetFor(rule.IconSize.Value, size);
                     DrawNumber(text, size, at, region, tint, countSettings);
                 }
 
-                if (alsoWorld && settings.World.Enable && rule.ShowInWorld)
+                if (alsoWorld && placement.InWorld)
                 {
-                    var screen = gameController.IngameState.Camera.WorldToScreen(match.Entity.PosNum);
-                    DrawNumber(text, size, screen + countSettings.OffsetFor(rule.WorldIconSize.Value, size),
-                        region, tint, countSettings);
+                    var at = placement.ScreenPoint + countSettings.OffsetFor(rule.WorldIconSize.Value, size);
+                    DrawNumber(text, size, at, region, tint, countSettings);
                 }
             }
         }

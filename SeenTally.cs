@@ -8,8 +8,8 @@ namespace MonsterModAlerter;
 
 /// <summary>
 /// The seen-this-map tally: how many of each kind of thing the counted rules have matched since entering the area,
-/// drawn as a two-column list at a fixed spot on the screen. Counts entities, not matches: an entity several rules picked
-/// out is still one thing seen once.
+/// drawn as a two-column list at a fixed spot on the screen. Counts entities, not matches: an entity several rules
+/// picked out is still one thing seen once.
 ///
 /// The counts are owned by the scan. Drawing reads only the ordered snapshot PublishRows leaves behind, rebuilt on the
 /// scan that changed it rather than per frame.
@@ -64,8 +64,8 @@ internal sealed class SeenTally
         foreach (var entry in _countByName)
             rows.Add(new Row(entry.Key, entry.Value));
 
-        // Commonest first, since a long list is cut off at the bottom and the rarest thing is the one worth losing. Ties
-        // by name, so the order does not shuffle as counts climb.
+        // Commonest first, since a long list is cut off at the bottom and the rarest thing is the one worth losing.
+        // Ties by name, so the order does not shuffle as counts climb.
         rows.Sort((a, b) => b.Count != a.Count
             ? b.Count.CompareTo(a.Count)
             : string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
