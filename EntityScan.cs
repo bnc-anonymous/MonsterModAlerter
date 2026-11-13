@@ -20,15 +20,18 @@ internal sealed class EntityScan
     // Run builds fresh lists and swaps them in; drawing reads each reference once. The swap is atomic, so the two never
     // touch the same list even if the scan runs off the render thread.
     private volatile List<RuleMatch> _matches = new();
-    private volatile List<RememberedPosition> _outOfRange = new();
+    private volatile List<RememberedPosition> _publishedRemembered = new();
 
     public EntityScan(SeenTally tally) => _tally = tally;
 
     /// <summary>The last scan's matches, in ascending priority, so the highest-priority icon is drawn last.</summary>
     public List<RuleMatch> Matches => _matches;
 
-    /// <summary>The remembered positions of entities the last scan did not match live.</summary>
-    public List<RememberedPosition> OutOfRange => _outOfRange;
+    /// <summary>
+    /// The remembered positions as of the last scan, live entities' included; drawing shows those whose entity it does
+    /// not draw live. See RememberedPositions.Snapshot.
+    /// </summary>
+    public List<RememberedPosition> Remembered => _publishedRemembered;
 
     public int RememberedCount => _remembered.Count;
 
@@ -45,7 +48,7 @@ internal sealed class EntityScan
     public void Clear()
     {
         _matches = new List<RuleMatch>();
-        _outOfRange = new List<RememberedPosition>();
+        _publishedRemembered = new List<RememberedPosition>();
         _remembered.Clear();
     }
 
@@ -152,7 +155,7 @@ internal sealed class EntityScan
         // Ascending priority so the highest-priority icon is drawn last, i.e. on top.
         matches.Sort((a, b) => a.Rule.Priority.Value.CompareTo(b.Rule.Priority.Value));
         _matches = matches;
-        _outOfRange = _remembered.OutOfRangeOf(matches);
+        _publishedRemembered = _remembered.Snapshot();
 
         _tally.PublishRows();
 

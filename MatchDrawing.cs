@@ -37,12 +37,29 @@ internal sealed class MatchDrawing
     private RectangleF _cornerMap;
 
     /// <summary>
+    /// Entities whose live match stands in for their remembered position this frame; refilled by Draw.
+    /// </summary>
+    private readonly HashSet<uint> _shownLiveIds = new();
+
+    private readonly List<RememberedPosition> _rememberedDrawn = new();
+
+    /// <summary>
     /// Where one match is drawn this frame. Read once per match, so the icon and count passes agree and neither reads
-    /// the game. The default, for an entity that is gone, dead or unreadable, draws nothing.
+    /// the game. The default, for a dead entity, draws nothing; so does GoneOrUnread, which lets the entity's
+    /// remembered position stand in.
     /// </summary>
     /// <param name="OnMap">Drawn on the map that is up, at MapPoint.</param>
     /// <param name="InWorld">Drawn in the world, at ScreenPoint.</param>
-    private readonly record struct Placement(bool OnMap, Vector2 MapPoint, bool InWorld, Vector2 ScreenPoint);
+    /// <param name="Gone">
+    /// The entity is no longer valid - it has left the entity list - or could not be read, so its remembered position,
+    /// if it has one, is drawn in its place until the next scan. False for a dead entity, which is valid and simply not
+    /// drawn.
+    /// </param>
+    private readonly record struct Placement(
+        bool OnMap, Vector2 MapPoint, bool InWorld, Vector2 ScreenPoint, bool Gone = false)
+    {
+        public static readonly Placement GoneOrUnread = new(false, default, false, default, Gone: true);
+    }
 
     public MatchDrawing(Graphics graphics) => _graphics = graphics;
 
@@ -119,14 +136,21 @@ internal sealed class MatchDrawing
     /// <summary>The corner map's rectangle as last read, for the debug overlay; empty before the first read.</summary>
     public RectangleF CornerMap => _cornerMap;
 
+    /// <summary>The remembered positions the last frame drew, for the debug overlay.</summary>
+    public List<RememberedPosition> RememberedDrawn => _rememberedDrawn;
+
     /// <summary>Makes the next MapAreaOf read the corner map's rectangle again. Called on area change.</summary>
     public void ForgetCornerMap() => _cornerMap = default;
 
+    /// <param name="remembered">
+    /// The scan's remembered positions, live entities' included (EntityScan.Remembered).
+    /// </param>
     /// <param name="mapArea">From MapAreaOf: where map drawing may go, or null to draw on no map.</param>
     public void Draw(
         GameController gameController, MonsterModAlerterSettings settings, List<RuleMatch> matches,
-        List<RememberedPosition> outOfRange, RectangleF region, RectangleF? mapArea)
+        List<RememberedPosition> remembered, RectangleF region, RectangleF? mapArea)
     {
+        _rememberedDrawn.Clear();
         ReadPlacements(gameController, matches, mapArea != null, settings.World.Enable);
 
         // The world first: the game draws the large map over the world, so its icons go over the world's here too.
@@ -146,8 +170,18 @@ internal sealed class MatchDrawing
         // over its edge is cut there. Whatever lies wholly outside is skipped as well.
         using (_graphics.BeginRectClip(area, true))
         {
+            // An entity matched live and still valid shows live, dead or not; one that has left the entity list since
+            // the scan shows at its remembered position, so nothing blinks out until the next scan catches up.
+            _shownLiveIds.Clear();
+
+            for (var i = 0; i < matches.Count; i++)
+            {
+                if (!_placements[i].Gone)
+                    _shownLiveIds.Add(matches[i].EntityId);
+            }
+
             // Remembered positions first, so a live entity's icon always sits on top of a remembered one.
-            DrawRememberedPositions(outOfRange, area, settings.ModCount);
+            DrawRememberedPositions(remembered, area, settings.ModCount);
 
             for (var i = 0; i < matches.Count; i++)
             {
@@ -174,7 +208,8 @@ internal sealed class MatchDrawing
                 OnMap: mapDrawn && match.Rule.ShowOnMap, InWorld: worldEnabled && match.Rule.ShowInWorld);
 
             _placements.Add(Safe.Read(state,
-                static s => s.Drawing.PlacementOf(s.GameController, s.Match, s.OnMap, s.InWorld), default));
+                static s => s.Drawing.PlacementOf(s.GameController, s.Match, s.OnMap, s.InWorld),
+                Placement.GoneOrUnread));
         }
     }
 
@@ -183,7 +218,10 @@ internal sealed class MatchDrawing
     {
         var entity = match.Entity;
 
-        if (!entity.IsValid || (match.CheckAlive && !entity.IsAlive))
+        if (!entity.IsValid)
+            return Placement.GoneOrUnread;
+
+        if (match.CheckAlive && !entity.IsAlive)
             return default;
 
         var mapPoint = default(Vector2);
@@ -256,16 +294,16 @@ internal sealed class MatchDrawing
     }
 
     /// <summary>
-    /// Last known positions of entities that have dropped out of range. Drawn from a stored grid position, never from
-    /// the entity: by definition it is no longer in the entity list.
+    /// Last known positions of entities not shown live this frame. Drawn from a stored grid position, never from the
+    /// entity, which is out of the entity list or about to be.
     /// </summary>
     private void DrawRememberedPositions(
-        List<RememberedPosition> stale, RectangleF area, ModCountSettings countSettings)
+        List<RememberedPosition> remembered, RectangleF area, ModCountSettings countSettings)
     {
-        foreach (var entry in stale)
+        foreach (var entry in remembered)
         {
             var rule = entry.Rule;
-            if (!rule.ShowOnMap)
+            if (!rule.ShowOnMap || _shownLiveIds.Contains(entry.Id))
                 continue;
 
             var mapPoint = Safe.Read((Graphics: _graphics, entry.GridPos),
@@ -276,6 +314,7 @@ internal sealed class MatchDrawing
                 continue;
 
             DrawIcon(point, iconSize, rule);
+            _rememberedDrawn.Add(entry);
 
             if (!rule.ShowModCount || entry.ModCount < rule.ModCountMinimum.Value)
                 continue;

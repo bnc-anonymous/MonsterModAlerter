@@ -166,7 +166,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         CursorMessage.Draw(Graphics, GameController);
 
         var matches = _scan.Matches;
-        var outOfRange = _scan.OutOfRange;
+        var remembered = _scan.Remembered;
 
         if (!Settings.Enable || !Safe.Read(GameController, static g => g.InGame, false))
             return;
@@ -197,15 +197,14 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         var mapArea = _matchDrawing.MapAreaOf(ingameUi, region, display.EnableDrawingOnCornerMap);
 
-        if (matches.Count > 0 || outOfRange.Count > 0)
-            _matchDrawing.Draw(GameController, Settings, matches, outOfRange, region, mapArea);
+        _matchDrawing.Draw(GameController, Settings, matches, remembered, region, mapArea);
 
         // Drawn when nothing matched as well: that is exactly the state the overlay is opened to explain. Guarded as a
         // whole: it reads freely, and a throw part-way only cuts this frame's text short.
         if (Settings.Debug.ShowOverlay)
         {
             Safe.Try(() => _debugOverlay.Draw(
-                GameController, Settings, _scan, _tally, matches, region, ingameUi, mapArea, _matchDrawing.CornerMap));
+                GameController, Settings, _scan, _tally, matches, region, ingameUi, mapArea, _matchDrawing));
         }
     }
 }

@@ -32,17 +32,18 @@ internal sealed class DebugOverlay
     public void Draw(
         GameController gameController, MonsterModAlerterSettings settings, EntityScan scan, SeenTally tally,
         List<RuleMatch> matches, RectangleF region, IngameUIElements ingameUi, RectangleF? mapArea,
-        RectangleF cornerMap)
+        MatchDrawing matchDrawing)
     {
         _lineY = Top;
 
         if (mapArea is { } framed)
             _graphics.DrawFrame(framed, Color.Cyan, 1);
 
-        var outOfRange = scan.OutOfRange;
+        var rememberedDrawn = matchDrawing.RememberedDrawn;
+        var cornerMap = matchDrawing.CornerMap;
 
         WriteLine($"[{_pluginName}] matches={matches.Count}  rules={settings.Rules.Content.Count}  " +
-                  $"remembered={scan.RememberedCount} (drawn stale={outOfRange.Count})", Color.White);
+                  $"remembered={scan.RememberedCount} (drawn this frame={rememberedDrawn.Count})", Color.White);
 
         // The second walk is the one that is easy to be wrong about: entities=0 says no rule asked for anything past
         // the monster list, which is the first thing to check when a critter rule draws nothing at all.
@@ -52,12 +53,12 @@ internal sealed class DebugOverlay
 
         // The nearest remembered position and whether it is inside the forget radius: if an icon is lingering, this
         // says whether the player is simply not close enough yet to disprove it.
-        if (outOfRange.Count > 0 && gameController?.Player != null)
+        if (rememberedDrawn.Count > 0 && gameController?.Player != null)
         {
             var here = gameController.Player.GridPosNum;
             var nearest = float.MaxValue;
 
-            foreach (var entry in outOfRange)
+            foreach (var entry in rememberedDrawn)
             {
                 var dx = entry.GridPos.X - here.X;
                 var dy = entry.GridPos.Y - here.Y;

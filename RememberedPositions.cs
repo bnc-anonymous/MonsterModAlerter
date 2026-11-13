@@ -10,7 +10,7 @@ namespace MonsterModAlerter;
 internal sealed record RememberedPosition(uint Id, Vector2 GridPos, AlertRule Rule, int ModCount);
 
 /// <summary>
-/// The remembered positions by entity id. Owned by the scan; drawing only sees the list OutOfRangeOf returns.
+/// The remembered positions by entity id. Owned by the scan; drawing only sees the list Snapshot returns.
 /// </summary>
 internal sealed class RememberedPositions
 {
@@ -61,27 +61,22 @@ internal sealed class RememberedPositions
     }
 
     /// <summary>
-    /// The remembered positions of entities that are not currently matched live, so they can be drawn without doubling
-    /// up on the ones already drawn live.
+    /// The remembered positions whose rule still asks for them, live entities' included, for drawing. Which of them to
+    /// show is decided each frame (MatchDrawing.Draw): those whose entity is not drawn live. Deciding it here, at the
+    /// scan, left a gap of up to a scan interval when a monster left range, in which neither icon was drawn.
     /// </summary>
-    public List<RememberedPosition> OutOfRangeOf(List<RuleMatch> live)
+    public List<RememberedPosition> Snapshot()
     {
-        if (_byId.Count == 0)
-            return new List<RememberedPosition>();
+        var snapshot = new List<RememberedPosition>(_byId.Count);
 
-        var liveIds = new HashSet<uint>(live.Count);
-        foreach (var match in live)
-            liveIds.Add(match.EntityId);
-
-        var stale = new List<RememberedPosition>(_byId.Count);
         foreach (var entry in _byId.Values)
         {
             // Dropped rather than kept when its rule is switched off or deleted, so stale icons cannot outlive the rule
             // that asked for them.
-            if (!liveIds.Contains(entry.Id) && entry.Rule.Enabled && entry.Rule.RememberPosition)
-                stale.Add(entry);
+            if (entry.Rule.Enabled && entry.Rule.RememberPosition)
+                snapshot.Add(entry);
         }
 
-        return stale;
+        return snapshot;
     }
 }
