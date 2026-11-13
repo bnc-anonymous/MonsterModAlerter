@@ -185,7 +185,7 @@ public class DisplaySettings
     /// position and the sound. Also decides whether every matching rule's world label is drawn.
     /// </summary>
     [Menu("Draw multiple matching icons", "Off: only the highest-priority rule's icon.")]
-    public ToggleNode DrawMultipleMatchingIcons { get; set; } = new(true);
+    public ToggleNode DrawMultipleMatchingIcons { get; set; } = new(false);
 
     /// <summary>
     /// ExileCore's plugin Order (BaseSettingsPlugin.Order). Plugins render in ascending Order, so a higher value draws
