@@ -23,12 +23,21 @@
       <HintPath>$(exapiPackage)\GameOffsets.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <!--
+      The HUD's own ImGui wrapper, Hexa.NET.ImGui (ImGui 1.92). The HUD no longer builds plugins against ImGui.NET: it
+      takes that package out of a plugin's project and puts this reference and a global using of it in, so both are
+      written here and a build outside the HUD matches the HUD's.
+    -->
+    <Reference Include="Hexa.NET.ImGui">
+      <HintPath>$(exapiPackage)\Hexa.NET.ImGui.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Using Include="Hexa.NET.ImGui" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ImGui.NET" Version="1.90.0.1" />
     <!-- For [JsonIgnore] and the rule icon's StringEnumConverter; the HUD ships this assembly. -->
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <!-- ExileApi draws and saves with SharpDX's RectangleF and Color; the HUD ships this assembly. -->
     <PackageReference Include="SharpDX.Mathematics" Version="4.2.0" />
   </ItemGroup>
