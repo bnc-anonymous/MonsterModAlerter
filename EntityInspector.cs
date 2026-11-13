@@ -18,12 +18,13 @@ namespace MonsterModAlerter;
 /// settings.
 ///
 /// After DevTree's window of the same name, its rows titled as DevTree titles them: the list is a snapshot, taken when
-/// the window opens and by Refresh, so the rows do not reorder under the mouse as distances change. Hovering an
-/// entity's row or details marks it in the world with DevTree's hovered pin - a disc at its feet, a stalk and its name
-/// above - and a line to it from the player, for one off screen. The game's own outline of a hovered monster cannot be
-/// had: the game draws it for the entity under the mouse, and setting that would mean writing to the game's memory. The
-/// bounding box ExileCore can draw (Render.BoundsNum) was tried and covered the tile rather than the monster (seen in
-/// game, 2026-11-13).
+/// the window opens and by Refresh, so the rows do not reorder under the mouse as distances change. With Show pins on,
+/// every listed entity carries DevTree's pin in the world - a disc at its feet, a stalk and its row's number above - so
+/// a monster on screen can be found in the list. Hovering an entity's row or details turns its pin green and doubles
+/// it, and draws a line to it from the player, for one off screen. The game's own outline of a hovered monster cannot
+/// be had: the game draws it for the entity under the mouse, and setting that would mean writing to the game's memory.
+/// The bounding box ExileCore can draw (Render.BoundsNum) was tried and covered the tile rather than the monster (seen
+/// in game, 2026-11-13).
 ///
 /// The filter matches a word in the metadata path, the name, a mod or a buff, ignoring case.
 /// </summary>
@@ -40,14 +41,24 @@ internal sealed class EntityInspector
     /// <summary>AutoExpedition's green, as the cursor message and the craft square use for "this one".</summary>
     private static readonly SharpDX.Color HighlightColour = Colours.FromArgb(255, 90, 255, 120);
 
-    // DevTree's pin at its hovered size: its defaults (foot 4, stalk 100, in world units) doubled by its hovered
-    // expansion factor of 2. The name on top stays at text scale 1, which the doubled 2 was too large for.
-    private const float PinFootRadius = 8f;
-    private const float PinStalkHeight = 200f;
+    // DevTree's pin colour for a listed entity, and AutoExpedition's red for one gone since the snapshot.
+    private static readonly SharpDX.Color PinColour = SharpDX.Color.White;
+    private static readonly SharpDX.Color GonePinColour = Colours.FromArgb(255, 235, 90, 90);
+
+    // DevTree's pin at its default sizes, in world units: a disc of radius 4 at the feet and a stalk 100 high, both
+    // doubled on the hovered entity's pin (DevTree's hovered expansion factor). DevTree doubles the text too; here it
+    // stays at scale 1, since doubled text was too large in game when the hovered pin carried the name (2026-11-13).
+    private const float PinFootRadius = 4f;
+    private const float PinStalkHeight = 100f;
+    private const float HoveredPinScale = 2f;
     private const float PinTextScale = 1f;
+
+    /// <summary>How far off screen, in pixels, a pin's foot may be and the pin still drawn: DevTree's margin.</summary>
+    private const float PinScreenMargin = 50f;
 
     private bool _snapshotDue = true;
     private bool _showAllEntities;
+    private bool _showPins = true;
     private string _filter = "";
     private List<Entity> _snapshot = new();
 
@@ -71,6 +82,8 @@ internal sealed class EntityInspector
         }
 
         Entity hovered = null;
+        List<Entity> shown = null;
+        Dictionary<Entity, int> indexInSnapshot = null;
         var windowOpen = true;
 
         ImGui.SetNextWindowSize(new Vector2(640f, 560f), ImGuiCond.FirstUseEver);
@@ -83,6 +96,12 @@ internal sealed class EntityInspector
             if (ImGui.Button("Refresh"))
                 _snapshot = SnapshotOf(gameController);
 
+            ImGui.SameLine();
+            ImGui.Checkbox("Show pins", ref _showPins);
+
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Marks each listed entity in the world with its number, as DevTree does.");
+
             // A label before the box, so a drag that overshoots the box's left edge stays over the window: off it, the
             // HUD sends keys to the game and Delete stops working. A click selects all the text, so replacing it needs
             // no drag at all.
@@ -94,7 +113,7 @@ internal sealed class EntityInspector
                 ImGuiInputTextFlags.AutoSelectAll);
 
             var filter = _filter.Trim();
-            var shown = _snapshot
+            shown = _snapshot
                 .Where(entity => _showAllEntities || Safe.Read(entity, static e => e.Path, "")
                     .StartsWith(MonsterPathPrefix, StringComparison.OrdinalIgnoreCase))
                 .Where(entity => filter.Length == 0 || MatchesFilter(entity, filter))
@@ -106,13 +125,13 @@ internal sealed class EntityInspector
                   "total entities, nearest first");
             ImGui.Separator();
 
+            // An entity's number is its place in the snapshot, as in DevTree, so filtering does not renumber rows.
+            indexInSnapshot = new Dictionary<Entity, int>(_snapshot.Count);
+            for (var i = 0; i < _snapshot.Count; i++)
+                indexInSnapshot[_snapshot[i]] = i;
+
             if (ImGui.BeginChild("##mmaEntities"))
             {
-                // An entity's number is its place in the snapshot, as in DevTree, so filtering does not renumber rows.
-                var indexInSnapshot = new Dictionary<Entity, int>(_snapshot.Count);
-                for (var i = 0; i < _snapshot.Count; i++)
-                    indexInSnapshot[_snapshot[i]] = i;
-
                 foreach (var entity in shown)
                 {
                     ImGui.PushID((int)Safe.Read(entity, static e => e.Id, 0u));
@@ -142,10 +161,23 @@ internal sealed class EntityInspector
         ImGui.End();
 
         if (!windowOpen)
+        {
             Open = false;
+            return;
+        }
+
+        // Nothing listed while the window is collapsed, so no pins. The hovered pin is drawn last, over the others.
+        if (shown == null)
+            return;
+
+        if (_showPins)
+        {
+            foreach (var entity in shown.Where(entity => entity != hovered))
+                DrawPin(gameController, graphics, entity, indexInSnapshot[entity], isHovered: false);
+        }
 
         if (hovered != null)
-            Highlight(gameController, graphics, hovered);
+            DrawPin(gameController, graphics, hovered, indexInSnapshot[hovered], isHovered: true);
     }
 
     /// <summary>
@@ -253,29 +285,39 @@ internal sealed class EntityInspector
     }
 
     /// <summary>
-    /// DevTree's hovered pin on the entity - a disc on the ground at its feet, a stalk up from it and its short name at
-    /// the top - and a line on the ground from the player to it.
+    /// DevTree's pin on an entity: a disc on the ground at its feet, a stalk up from it and its number at the top,
+    /// white, or red once the entity is gone. The hovered entity's pin is green and twice the size, with a line on the
+    /// ground from the player to it, drawn even when the pin is not. A pin whose foot is off screen is not drawn.
     /// </summary>
-    private static void Highlight(GameController gameController, Graphics graphics, Entity entity)
+    private static void DrawPin(GameController gameController, Graphics graphics, Entity entity, int index,
+        bool isHovered)
     {
         Safe.Try(() =>
         {
             var gridPos = entity.GridPosNum;
+            var colour = isHovered ? HighlightColour : entity.IsValid ? PinColour : GonePinColour;
+
+            if (isHovered && gameController.Player is { } player)
+                graphics.DrawLineInWorld(player.GridPosNum, gridPos, 2f, colour);
+
             var feet = gameController.IngameState.Data.ToWorldWithTerrainHeight(gridPos);
             var camera = gameController.IngameState.Camera;
             var stalkBottom = camera.WorldToScreen(feet);
-            var stalkTop = camera.WorldToScreen(feet with { Z = feet.Z - PinStalkHeight });
+            var screen = gameController.Window.GetWindowRectangleTimeCache with { Location = SharpDX.Vector2.Zero };
+            screen.Inflate(PinScreenMargin, PinScreenMargin);
 
-            if (gameController.Player is { } player)
-                graphics.DrawLineInWorld(player.GridPosNum, gridPos, 2f, HighlightColour);
+            if (!screen.Contains(stalkBottom.X, stalkBottom.Y))
+                return;
 
-            graphics.DrawFilledCircleInWorld(feet, PinFootRadius, HighlightColour);
-            graphics.DrawLine(stalkBottom, stalkTop, 2f, HighlightColour);
+            var size = isHovered ? HoveredPinScale : 1f;
+            var stalkTop = camera.WorldToScreen(feet with { Z = feet.Z - PinStalkHeight * size });
+
+            graphics.DrawFilledCircleInWorld(feet, PinFootRadius * size, colour);
+            graphics.DrawLine(stalkBottom, stalkTop, 2f, colour);
 
             using (graphics.SetTextScale(PinTextScale))
             {
-                var name = MetadataPaths.ShortNameOf(MetadataPaths.WithoutLevelTag(entity.Path));
-                graphics.DrawTextWithBackground(name, stalkTop, HighlightColour,
+                graphics.DrawTextWithBackground($"{index}", stalkTop, colour,
                     FontAlign.Center | FontAlign.VerticalCenter, SharpDX.Color.Black);
             }
         });
