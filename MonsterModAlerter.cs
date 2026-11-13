@@ -22,10 +22,9 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     private MatchDrawing _matchDrawing;
     private DebugOverlay _debugOverlay;
 
-    /// <summary>
-    /// Set by the Reset Counts button and consumed on the next Tick. Deferred for the same reason the settings reset is:
-    /// the button fires on the UI thread, and emptying the tally underneath a scan that is walking it would throw.
-    /// </summary>
+    // Set by the Refresh Now and Reset Counts buttons and answered by the next Tick. A button fires while the menu is
+    // drawn; answering in the Tick keeps every change to the scan's state, and every scan, in one place.
+    private volatile bool _refreshRequested;
     private volatile bool _resetSeenRequested;
 
     public MonsterModAlerter()
@@ -45,7 +44,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         if (Settings.Rules.Content.Count == 0)
             Settings.Rules.Content.Add(AlertRule.Default());
 
-        Settings.ForceRefresh.OnPressed = ForceRefresh;
+        Settings.ForceRefresh.OnPressed = () => _refreshRequested = true;
         Settings.SeenPanel.Reset.OnPressed = () => _resetSeenRequested = true;
 
         // Registered with the HUD's own input handling, which is what makes PressedOnce work. Re-registered on change,
@@ -70,10 +69,10 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     }
 
     /// <summary>
-    /// Drops the announced entities and forces the next Tick to re-scan instead of waiting out the scan interval. Drawing
-    /// settings are read per frame, so this is only needed to re-arm sound alerts or to apply a rule change without
-    /// waiting. Remembered positions are dropped too: Refresh Now exists to re-derive everything from the current state,
-    /// and keeping ghosts would defeat that.
+    /// Drops the announced entities and re-scans now instead of waiting out the scan interval. Drawing settings are read
+    /// per frame, so this is only needed to re-arm sound alerts or to apply a rule change without waiting. Remembered
+    /// positions are dropped too: Refresh Now exists to re-derive everything from the current state, and keeping ghosts
+    /// would defeat that.
     /// </summary>
     private void ForceRefresh()
     {
@@ -94,6 +93,12 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             Settings.ResetToDefaults();
             ForceRefresh();
             LogMessage($"{Name}: all rules deleted and settings restored to defaults.");
+        }
+
+        if (_refreshRequested)
+        {
+            _refreshRequested = false;
+            ForceRefresh();
         }
 
         if (_resetSeenRequested)

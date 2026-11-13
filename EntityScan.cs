@@ -66,7 +66,6 @@ internal sealed class EntityScan
 
         var matches = new List<RuleMatch>();
 
-        // Local, not a field, so a Refresh Now from the UI thread cannot collide with a scan in progress.
         var matcher = new RuleMatcher(rules, settings.CheckMods, settings.CheckBuffs, settings.AllowMultipleMatches);
 
         var maxDistance = settings.MaxDistance.Value;

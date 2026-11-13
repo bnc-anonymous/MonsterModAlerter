@@ -7,8 +7,8 @@ using ExileCore.PoEMemory.MemoryObjects;
 namespace MonsterModAlerter;
 
 /// <summary>
-/// Tests one entity at a time against the enabled alert rules. Made once per scan, and holds the scratch lists that scan
-/// refills for every entity, so a Refresh Now running its own scan never shares them.
+/// Tests one entity at a time against the enabled alert rules. Made once per scan, with that scan's rules and switches,
+/// and holds the scratch lists the scan refills for every entity.
 /// </summary>
 internal sealed class RuleMatcher
 {
