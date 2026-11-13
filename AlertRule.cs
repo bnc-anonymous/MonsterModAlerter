@@ -143,9 +143,12 @@ public class AlertRule : ISettings
     [JsonIgnore]
     public CustomNode IconGroup { get; set; } = Section.Of("Icon");
 
-    /// <summary>Saved by name, so the settings file stays readable and survives the enum being reordered.</summary>
+    /// <summary>
+    /// Saved by name, so the settings file stays readable and survives the enum being reordered. A rule added from the
+    /// menu starts with the large pink pentagon; the example rule sets its own.
+    /// </summary>
     [JsonConverter(typeof(StringEnumConverter))]
-    public MapIconsIndex Icon = MapIconsIndex.CorpseTypeUndead;
+    public MapIconsIndex Icon = MapIconsIndex.LootFilterLargePinkPentagon;
 
     /// <summary>The icon, drawn on the map and, with Draw icon under World, in the world.</summary>
     [Menu("Icon")]
