@@ -166,7 +166,7 @@ internal sealed class EntityScan
         // Ascending priority so the highest-priority icon is drawn last, i.e. on top.
         matches.Sort((a, b) => a.Rule.Priority.Value.CompareTo(b.Rule.Priority.Value));
         _matches = matches;
-        _publishedRemembered = _remembered.Snapshot();
+        _publishedRemembered = _remembered.Snapshot(rules);
 
         _tally.PublishRows();
 
@@ -188,8 +188,13 @@ internal sealed class EntityScan
             // from being a monster, which is what those rules are for.
             var hostile = entity.IsHostile;
 
+            // Every way out below where no rule matches a loaded entity forgets its remembered position: one remembered
+            // while a rule matched it, before the rule was edited not to, would otherwise stay drawn where it was then.
             if (!hostile && !anyEntityRules)
+            {
+                _remembered.Forget(entity.Id);
                 return;
+            }
 
             loadedIds?.Add(entity.Id);
 
@@ -206,7 +211,10 @@ internal sealed class EntityScan
             var monsterOk = hostile && RarityAccepted(entity.Rarity);
 
             if (!monsterOk && !anyEntityRules)
+            {
+                _remembered.Forget(entity.Id);
                 return;
+            }
 
             if (OfferToRules(entity, monsterOk, anyEntityRules, checkAlive: true) && !monsterOk)
                 anyEntityMatches++;
@@ -244,7 +252,10 @@ internal sealed class EntityScan
             var best = matcher.BestMatchOf(entity, monsterOk, anyOk, checkAlive);
 
             if (best == null)
+            {
+                _remembered.Forget(entity.Id);
                 return false;
+            }
 
             // Tallied when any of the rules that matched asked to be, whether or not it is the one that won the icon:
             // the tally is asking what was here, not which rule drew it.

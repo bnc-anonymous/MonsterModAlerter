@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace MonsterModAlerter;
@@ -73,15 +74,18 @@ internal sealed class RememberedPositions
     /// show is decided each frame (MatchDrawing.Draw): those whose entity is not drawn live. Deciding it here, at the
     /// scan, left a gap of up to a scan interval when a monster left range, in which neither icon was drawn.
     /// </summary>
-    public List<RememberedPosition> Snapshot()
+    /// <param name="rules">
+    /// The rules the scan ran. A position whose rule is not among them - switched off, in a group switched off, or
+    /// deleted - is left out, so its icon cannot outlive the rule. Checking the rule's own Enabled was not enough: a
+    /// deleted rule is still enabled, and the group's switch is not the rule's.
+    /// </param>
+    public List<RememberedPosition> Snapshot(AlertRule[] rules)
     {
         var snapshot = new List<RememberedPosition>(_byId.Count);
 
         foreach (var entry in _byId.Values)
         {
-            // Dropped rather than kept when its rule is switched off or deleted, so stale icons cannot outlive the rule
-            // that asked for them.
-            if (entry.Rule.Enabled && entry.Rule.RememberPosition)
+            if (entry.Rule.RememberPosition && rules.Contains(entry.Rule))
                 snapshot.Add(entry);
         }
 
