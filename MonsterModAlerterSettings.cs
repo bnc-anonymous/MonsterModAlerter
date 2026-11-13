@@ -29,7 +29,7 @@ public class MonsterModAlerterSettings : ISettings
 
     /// <summary>
     /// The button at the top of the menu that puts every setting back to its default except Enable, and replaces the
-    /// alert rules with the example rule (SettingsReset). Clickable only while Ctrl is held, so a stray click cannot
+    /// alert groups with the example group (SettingsReset). Clickable only while Ctrl is held, so a stray click cannot
     /// undo the settings, as AutoExpedition's reset is; its tooltip says both, and shows while the button is disabled
     /// too. Made in the constructor because it needs the settings it resets.
     /// </summary>
@@ -55,19 +55,32 @@ public class MonsterModAlerterSettings : ISettings
     public int ConfigVersion { get; set; }
 
     /// <summary>
-    /// What to mark, one rule per kind of monster or modifier. Left empty here and seeded with the example rule by the
-    /// plugin: ExileCore deserializes settings without ObjectCreationHandling.Replace, so a list filled here would be
-    /// appended to on every load.
+    /// What to mark: named groups of rules, each rule one kind of monster or modifier. Left empty here and seeded with
+    /// the example group by the plugin: ExileCore deserializes settings without ObjectCreationHandling.Replace, so a
+    /// list filled here would be appended to on every load.
     /// </summary>
-    [Menu("Alert rules")]
-    public ContentNode<AlertRule> Rules { get; set; } = new()
+    [Menu("Alert groups")]
+    public ContentNode<AlertGroup> Groups { get; set; } = new()
     {
         EnableControls = true,
         EnableItemCollapsing = true,
-        ItemFactory = () => new AlertRule(),
-        ItemFilter = (rule, search) => rule.SearchTerm.Value.Contains(search, StringComparison.OrdinalIgnoreCase),
-        Content = new List<AlertRule>(),
+        ItemFactory = () => new AlertGroup(),
+        ItemFilter = (group, search) => group.Name.Value.Contains(search, StringComparison.OrdinalIgnoreCase),
+        Content = new List<AlertGroup>(),
     };
+
+    /// <summary>Every rule of every enabled group, in list order. The rules' own Enabled is not checked here.</summary>
+    public IEnumerable<AlertRule> RulesOfEnabledGroups()
+    {
+        foreach (var group in Groups?.Content ?? [])
+        {
+            if (group?.Enabled?.Value != true)
+                continue;
+
+            foreach (var rule in group.Rules?.Content ?? [])
+                yield return rule;
+        }
+    }
 
     [Submenu(CollapsedByDefault = true)]
     public DisplaySettings Display { get; set; } = new();
@@ -93,7 +106,7 @@ public class MonsterModAlerterSettings : ISettings
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
         {
             ImGui.SetTooltip("Resets every setting to its default, except Enable, and replaces\n" +
-                             "the alert rules with the example rule. Hold Ctrl to click it.");
+                             "the alert groups with the example group. Hold Ctrl to click it.");
         }
 
         if (!armed)

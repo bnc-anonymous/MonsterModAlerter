@@ -42,7 +42,7 @@ internal sealed class DebugOverlay
         var rememberedDrawn = matchDrawing.RememberedDrawn;
         var cornerMap = matchDrawing.CornerMap;
 
-        WriteLine($"[{_pluginName}] matches={matches.Count}  rules={settings.Rules.Content.Count}  " +
+        WriteLine($"[{_pluginName}] matches={matches.Count}  groups={settings.Groups.Content.Count}  " +
                   $"remembered={scan.RememberedCount} (drawn this frame={rememberedDrawn.Count})", Color.White);
 
         // The second walk is the one that is easy to be wrong about: entities=0 says no rule asked for anything past

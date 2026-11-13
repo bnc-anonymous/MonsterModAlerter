@@ -56,10 +56,10 @@ internal sealed class EntityScan
     {
         // A rule needs something to go on, but either half will do: a mod term, or Metadata paths naming (or excluding)
         // a family. A rule with neither would match every monster.
-        var rules = settings.Rules?.Content?
+        var rules = settings.RulesOfEnabledGroups()
             .Where(r => r is { Enabled.Value: true } &&
                         (!string.IsNullOrWhiteSpace(r.SearchTerm?.Value) || r.HasMetadataPaths))
-            .ToArray() ?? [];
+            .ToArray();
 
         if (rules.Length == 0)
         {

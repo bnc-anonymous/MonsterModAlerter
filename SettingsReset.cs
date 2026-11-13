@@ -4,17 +4,17 @@ using System.Reflection;
 namespace MonsterModAlerter;
 
 /// <summary>
-/// Puts every setting back as shipped, except Enable, and leaves the example rule as the only alert rule. For the Reset
-/// all settings and rules button at the top of the menu.
+/// Puts every setting back as shipped, except Enable, and leaves the example group as the only alert group. For the
+/// Reset all settings and rules button at the top of the menu.
 ///
 /// By reflection, after AutoExpedition's ResetAll and CraftUntilHighlighted's SettingsReset: a fresh settings object is
 /// made and each node's value copied from it, section by section, so "default" means whatever the property initialisers
 /// say now, and a setting added later is covered without anybody coming back here.
 ///
 /// A node is anything with a readable and writable Value (ToggleNode, RangeNode, ColorNode, TextNode, ListNode,
-/// HotkeyNodeV2), or a writable Content, which is how the Alert rules list holds its rules (ContentNode). A section is
-/// a property whose type is this plugin's own; its nodes are copied the same way. Anything else - a CustomNode button
-/// or heading, a request flag, an int - is left alone.
+/// HotkeyNodeV2), or a writable Content, which is how the Alert groups list holds its groups (ContentNode). A section
+/// is a property whose type is this plugin's own; its nodes are copied the same way. Anything else - a CustomNode
+/// button or heading, a request flag, an int - is left alone.
 /// </summary>
 internal static class SettingsReset
 {
@@ -33,8 +33,8 @@ internal static class SettingsReset
 
         Copy(new MonsterModAlerterSettings(), settings, true);
 
-        // The fresh object's rule list is empty: the plugin seeds the example rule on load, not the constructor.
-        settings.Rules.Content.Add(AlertRule.Example());
+        // The fresh object's group list is empty: the plugin seeds the example group on load, not the constructor.
+        settings.Groups.Content.Add(AlertGroup.Example());
     }
 
     private static void Copy(object from, object to, bool root)
