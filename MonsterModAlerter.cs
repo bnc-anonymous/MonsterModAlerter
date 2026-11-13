@@ -178,12 +178,13 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         var display = Settings.Display;
 
-        if (!display.IgnoreFullscreenPanels &&
-            Safe.Read(ingameUi, static ui => ui.FullscreenPanels.Any(panel => panel.IsVisible), false))
-            return;
+        var preventDrawingOverPanels = display.PreventDrawingOverPanels.Value;
 
-        if (!display.IgnoreLargePanels &&
-            Safe.Read(ingameUi, static ui => ui.LargePanels.Any(panel => panel.IsVisible), false))
+        // A fullscreen or large panel leaves no world worth drawing on; a side panel only covers part of the screen,
+        // which the draw region below leaves out.
+        if (preventDrawingOverPanels &&
+            Safe.Read(ingameUi, static ui => ui.FullscreenPanels.Any(panel => panel.IsVisible) ||
+                                             ui.LargePanels.Any(panel => panel.IsVisible), false))
             return;
 
         // Drawn before the nothing-to-draw check below: the tally is a record of the whole map, so it has to stay up on
@@ -191,8 +192,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         _tally.Draw(Graphics, Settings.SeenTally);
 
         // Empty when it cannot be read, which draws nothing rather than drawing over the panels.
-        var region = Safe.Read((GameController, Ui: ingameUi, Limit: display.LimitDrawRegion.Value),
-            static s => MatchDrawing.DrawRegionOf(s.GameController, s.Ui, s.Limit), default);
+        var region = Safe.Read((GameController, Ui: ingameUi, Prevent: preventDrawingOverPanels),
+            static s => MatchDrawing.DrawRegionOf(s.GameController, s.Ui, s.Prevent), default);
 
         var mapArea = _matchDrawing.MapAreaOf(ingameUi, region, display.EnableDrawingOnCornerMap);
 

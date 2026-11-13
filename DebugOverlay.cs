@@ -79,7 +79,7 @@ internal sealed class DebugOverlay
                       : "mapArea=none"),
             mapArea != null ? Color.LightGreen : Color.Orange);
         WriteLine($"region=({region.Left:0},{region.Top:0})-({region.Right:0},{region.Bottom:0})  " +
-                  $"limit={settings.Display.LimitDrawRegion.Value}", Color.White);
+                  $"preventDrawingOverPanels={settings.Display.PreventDrawingOverPanels.Value}", Color.White);
 
         // Only for a rule that is actually counting, and only the first such match: printing every mod on every match
         // would bury the rest of the overlay.

@@ -214,19 +214,14 @@ public class DisplaySettings
     public ToggleNode EnableDrawingOnCornerMap { get; set; } = new(false);
 
     /// <summary>
-    /// With an inventory or stash panel open, the drawable area shrinks to the part of the window it leaves uncovered,
-    /// the way Radar does. Off draws over the open panels. See MatchDrawing.DrawRegionOf.
+    /// Keeps the overlay off the game's panels. A side panel - the inventory, the stash, the character sheet - covers
+    /// part of the screen, so drawing skips what would land on it (MatchDrawing.DrawRegionOf). A panel in ExileCore's
+    /// FullscreenPanels or LargePanels hides the overlay outright while it is open; which panels those lists hold is
+    /// obfuscated in ExileCore, and the inventory is in neither (seen in game, 2026-11-13). Off draws over everything.
+    /// Replaces Radar's three: Limit draw region, Ignore fullscreen panels and Ignore large panels.
     /// </summary>
-    [Menu("Limit draw region",
-        "Skip what would be drawn over an open side panel, such as the\n" +
-        "inventory or stash.")]
-    public ToggleNode LimitDrawRegion { get; set; } = new(true);
-
-    [Menu("Ignore fullscreen panels", "Keep drawing while a fullscreen panel, such as the atlas, is open.")]
-    public ToggleNode IgnoreFullscreenPanels { get; set; } = new(false);
-
-    [Menu("Ignore large panels", "Keep drawing while a large panel is open.")]
-    public ToggleNode IgnoreLargePanels { get; set; } = new(false);
+    [Menu("Prevent drawing over panels")]
+    public ToggleNode PreventDrawingOverPanels { get; set; } = new(true);
 
     /// <summary>
     /// ExileCore's plugin Order. Plugins render in ascending Order, so a higher value draws on top. ExileCore sorts

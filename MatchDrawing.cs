@@ -47,16 +47,16 @@ internal sealed class MatchDrawing
     public MatchDrawing(Graphics graphics) => _graphics = graphics;
 
     /// <summary>
-    /// Full window, minus whatever the open side panels cover. Anything drawn outside this would appear on top of the
-    /// panel, which is what Limit draw region exists to prevent. The inventory and stash only cover part of the screen,
-    /// so rather than hiding everything the drawable area shrinks to the part they leave uncovered, the way Radar does.
+    /// Full window, minus whatever the open side panels cover when Prevent drawing over panels is on. Anything drawn
+    /// outside this would appear on top of the panel. The inventory and stash only cover part of the screen, so rather
+    /// than hiding everything the drawable area shrinks to the part they leave uncovered, the way Radar does.
     /// </summary>
     public static RectangleF DrawRegionOf(
-        GameController gameController, IngameUIElements ingameUi, bool limitDrawRegion)
+        GameController gameController, IngameUIElements ingameUi, bool preventDrawingOverPanels)
     {
         var region = gameController.Window.GetWindowRectangleTimeCache with { Location = SharpDX.Vector2.Zero };
 
-        if (!limitDrawRegion)
+        if (!preventDrawingOverPanels)
             return region;
 
         if (ingameUi.OpenRightPanel?.IsVisible == true)
