@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Linq;
+using System.Windows.Forms;
 using ExileCore;
+using ExileCore.Shared.Nodes;
 
 namespace MonsterModAlerter;
 
@@ -47,17 +49,32 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         Settings.ForceRefresh.OnPressed = () => _refreshRequested = true;
         Settings.SeenPanel.Reset.OnPressed = () => _resetSeenRequested = true;
 
-        // Registered with the HUD's own input handling, which is what makes PressedOnce work. Re-registered on change,
-        // since the key it was told about is the one it watches.
-        var toggleKey = Settings.SeenPanel.ToggleKey;
-        Input.RegisterKey(toggleKey.Value);
-        toggleKey.OnValueChanged += () => Input.RegisterKey(toggleKey.Value);
+        RegisterHotkey(Settings.SeenPanel.ToggleKey);
 
         _matchDrawing = new MatchDrawing(Graphics);
         _debugOverlay = new DebugOverlay(Graphics, Name);
 
         return true;
     }
+
+    /// <summary>
+    /// Tells Input about a hotkey so PressedOnce answers, and again whenever it is rebound in the menu. A key left unbound
+    /// is not registered, since registering None would claim a key nobody pressed.
+    /// </summary>
+    private static void RegisterHotkey(HotkeyNodeV2 hotkey)
+    {
+        RegisterIfBound(hotkey);
+        hotkey.OnValueChanged += () => RegisterIfBound(hotkey);
+    }
+
+    private static void RegisterIfBound(HotkeyNodeV2 hotkey)
+    {
+        if (IsBound(hotkey))
+            Input.RegisterKey(hotkey.Value);
+    }
+
+    private static bool IsBound(HotkeyNodeV2 hotkey) =>
+        Safe.Read(hotkey, static h => h.Value.Key, Keys.None) != Keys.None;
 
     public override void AreaChange(AreaInstance area)
     {
@@ -112,7 +129,9 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         // Polled before the scan interval gate, so the key still answers on the frames that do not re-scan. Toggling
         // the setting itself is deliberate: the menu tick and the key are one switch, not two that can disagree.
-        if (Settings.SeenPanel.ToggleKey.PressedOnce())
+        var toggleKey = Settings.SeenPanel.ToggleKey;
+
+        if (IsBound(toggleKey) && toggleKey.PressedOnce())
             Settings.SeenPanel.Show.Value = !Settings.SeenPanel.Show.Value;
 
         if (_scanTimer.ElapsedMilliseconds < Settings.ScanIntervalMs)
