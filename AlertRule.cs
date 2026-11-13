@@ -35,8 +35,8 @@ public class AlertRule
     public ToggleNode Enabled { get; set; } = new(true);
 
     /// <summary>
-    /// Matched as a case-insensitive substring of the monster's mod and buff names (Scan's Search mods and Search
-    /// buffs). Comma-separated terms are ANDed: "mod1,mod2" matches only a monster carrying both, which flags
+    /// Matched as a case-insensitive substring of the monster's mod and buff names (Search mods and Search buffs,
+    /// below). Comma-separated terms are ANDed: "mod1,mod2" matches only a monster carrying both, which flags
     /// combinations that are harmless alone; either/or is two rules. Blank leaves the path filter alone to decide,
     /// which marks a kind of monster whatever its modifiers.
     /// </summary>
@@ -44,6 +44,22 @@ public class AlertRule
         "Matched against mod and buff names, ignoring case. Comma-separated\n" +
         "terms must all match. Blank: the path filter alone decides.")]
     public TextNode SearchTerm { get; set; } = new("");
+
+    /// <summary>
+    /// Whether the search term is tested against ObjectMagicProperties.Mods, the internal mod names such as
+    /// TormentHauntedMonsterThief. Every entry is searched, not only the rare affixes Show mod count counts. Does not
+    /// affect that count, which always reads the mods.
+    /// </summary>
+    [Menu("Search mods (ObjectMagicProperties.Mods)")]
+    public ToggleNode SearchMods { get; set; } = new(true);
+
+    /// <summary>
+    /// Whether the search term is tested against the names in the Buffs component's BuffsList, such as
+    /// torment_cutthroat. Some monsters carry a mod only as a buff. The debug overlay lists a monster's buffs beside
+    /// its mods, which tells which of the two a name is.
+    /// </summary>
+    [Menu("Search buffs (Buffs.BuffsList)")]
+    public ToggleNode SearchBuffs { get; set; } = new(true);
 
     /// <summary>
     /// Each term is a .NET regular expression instead of plain text, so "MonsterMod.*Touched" matches every Touched

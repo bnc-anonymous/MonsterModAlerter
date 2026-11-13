@@ -70,8 +70,7 @@ internal sealed class EntityScan
         var matches = new List<RuleMatch>();
 
         var drawMultipleMatchingIcons = settings.Display.DrawMultipleMatchingIcons.Value;
-        var matcher = new RuleMatcher(
-            rules, settings.Scan.SearchMods, settings.Scan.SearchBuffs, drawMultipleMatchingIcons);
+        var matcher = new RuleMatcher(rules, drawMultipleMatchingIcons);
 
         // The rarities some monster rule accepts. A monster of any other rarity is skipped before its components are
         // read, the cheap gate a global rarity filter used to be, now worked out from the rules themselves.

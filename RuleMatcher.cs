@@ -19,24 +19,34 @@ internal sealed class RuleMatcher
     public const string RareModPrefix = "MonsterMod";
 
     private readonly AlertRule[] _rules;
-    private readonly bool _searchMods;
-    private readonly bool _searchBuffs;
     private readonly bool _drawMultipleMatchingIcons;
 
-    /// <summary>The entity's mod and buff names, gathered once and tested against every rule.</summary>
-    private readonly List<string> _modAndBuffNames = new(16);
+    /// <summary>Whether any rule searches buffs, so whether the Buffs component is read at all.</summary>
+    private readonly bool _readBuffs;
+
+    /// <summary>The entity's mod names and buff names, gathered once and tested against every rule that asks.</summary>
+    private readonly List<string> _modNames = new(16);
+
+    private readonly List<string> _buffNames = new(16);
 
     /// <summary>Case-insensitive, since the same affix has been seen differing only in case.</summary>
     private readonly HashSet<string> _countedNames = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly List<RuleMatch> _matchesOfEntity = new(4);
 
-    public RuleMatcher(AlertRule[] rules, bool searchMods, bool searchBuffs, bool drawMultipleMatchingIcons)
+    public RuleMatcher(AlertRule[] rules, bool drawMultipleMatchingIcons)
     {
         _rules = rules;
-        _searchMods = searchMods;
-        _searchBuffs = searchBuffs;
         _drawMultipleMatchingIcons = drawMultipleMatchingIcons;
+
+        foreach (var rule in rules)
+        {
+            if (rule.SearchBuffs && rule.Terms.Length > 0)
+            {
+                _readBuffs = true;
+                break;
+            }
+        }
     }
 
     /// <summary>
@@ -59,9 +69,10 @@ internal sealed class RuleMatcher
     {
         _matchesOfEntity.Clear();
 
-        // Gather the entity's mod and buff names once, then test all rules against that set - cheaper than re-reading
-        // components per rule, and it lets terms match across both sources.
-        _modAndBuffNames.Clear();
+        // Gather the entity's mod and buff names once, then test each rule against the lists it searches - cheaper than
+        // re-reading components per rule.
+        _modNames.Clear();
+        _buffNames.Clear();
         _countedNames.Clear();
 
         // Counted here rather than in a second pass, so the number comes from the same read as the matching. Modifiers
@@ -82,19 +93,17 @@ internal sealed class RuleMatcher
                 if (mod.StartsWith(RareModPrefix, StringComparison.OrdinalIgnoreCase) && _countedNames.Add(mod))
                     modCount++;
 
-                // Search mods only governs what terms are tested against, never the count - searching stays over every
-                // entry, since a term may well name one of the others.
-                if (_searchMods)
-                    _modAndBuffNames.Add(mod);
+                // Every entry is searchable, not only the counted ones, since a term may well name one of the others.
+                _modNames.Add(mod);
             }
         }
 
-        if (_searchBuffs && entity.TryGetComponent<Buffs>(out var buffs) && buffs?.BuffsList is { } buffList)
+        if (_readBuffs && entity.TryGetComponent<Buffs>(out var buffs) && buffs?.BuffsList is { } buffList)
         {
             foreach (var buff in buffList)
             {
                 if (!string.IsNullOrEmpty(buff?.Name))
-                    _modAndBuffNames.Add(buff.Name);
+                    _buffNames.Add(buff.Name);
             }
         }
 
@@ -157,9 +166,14 @@ internal sealed class RuleMatcher
 
             for (var i = 0; i < terms.Length; i++)
             {
-                var hit = rule.UseRegex
-                    ? FirstNameMatching(_modAndBuffNames, patterns[i])
-                    : FirstNameContaining(_modAndBuffNames, terms[i]);
+                // Mods before buffs, as the rule ticks them; the first name found labels the match.
+                string hit = null;
+
+                if (rule.SearchMods)
+                    hit = FirstNameMatching(_modNames, rule, terms[i], patterns, i);
+
+                if (hit == null && rule.SearchBuffs)
+                    hit = FirstNameMatching(_buffNames, rule, terms[i], patterns, i);
 
                 // Most things that are not monsters carry no mods and no buffs, so their metadata path is the only
                 // thing a term can match. Offered to these rules only: adding it for monster rules would quietly widen
@@ -205,7 +219,7 @@ internal sealed class RuleMatcher
     }
 
     /// <summary>
-    /// How many of the entity's distinct mod and buff names this rule's terms match.
+    /// How many of the entity's distinct mod and buff names this rule's terms match, in the lists the rule searches.
     ///
     /// Any term counts, not all of them: the terms are ANDed to decide whether the rule fires at all, and by this point
     /// it has. Asking "how many match" then means how many entries any of them picked out, which for the usual
@@ -223,36 +237,11 @@ internal sealed class RuleMatcher
 
         var count = 0;
 
-        foreach (var name in _modAndBuffNames)
-        {
-            var hit = false;
+        if (rule.SearchMods)
+            count += CountNamesMatching(_modNames, rule, terms, patterns);
 
-            if (rule.UseRegex)
-            {
-                foreach (var pattern in patterns)
-                {
-                    if (pattern.IsMatch(name))
-                    {
-                        hit = true;
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                foreach (var term in terms)
-                {
-                    if (name.Contains(term, StringComparison.OrdinalIgnoreCase))
-                    {
-                        hit = true;
-                        break;
-                    }
-                }
-            }
-
-            if (hit && _countedNames.Add(name))
-                count++;
-        }
+        if (rule.SearchBuffs)
+            count += CountNamesMatching(_buffNames, rule, terms, patterns);
 
         if (path != null && _countedNames.Add(path))
         {
@@ -284,29 +273,49 @@ internal sealed class RuleMatcher
     }
 
     /// <summary>
-    /// First mod or buff name the pattern matches. Unanchored, so a pattern may match anywhere in the name - the same
-    /// reach a plain substring term has.
+    /// The distinct names in the list any of the rule's terms match, not yet counted for this rule (_countedNames).
     /// </summary>
-    private static string FirstNameMatching(List<string> names, Regex pattern)
+    private int CountNamesMatching(List<string> names, AlertRule rule, string[] terms, Regex[] patterns)
+    {
+        var count = 0;
+
+        foreach (var name in names)
+        {
+            for (var i = 0; i < terms.Length; i++)
+            {
+                if (NameMatches(name, rule, terms[i], patterns, i))
+                {
+                    if (_countedNames.Add(name))
+                        count++;
+
+                    break;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    /// <summary>First name in the list that the term matches, or null.</summary>
+    private static string FirstNameMatching(
+        List<string> names, AlertRule rule, string term, Regex[] patterns, int index)
     {
         foreach (var name in names)
         {
-            if (pattern.IsMatch(name))
+            if (NameMatches(name, rule, term, patterns, index))
                 return name;
         }
 
         return null;
     }
 
-    /// <summary>OrdinalIgnoreCase avoids allocating a lowercased copy of every mod name each scan.</summary>
-    private static string FirstNameContaining(List<string> names, string term)
-    {
-        foreach (var name in names)
-        {
-            if (name.Contains(term, StringComparison.OrdinalIgnoreCase))
-                return name;
-        }
-
-        return null;
-    }
+    /// <summary>
+    /// Whether a term matches a mod or buff name: as a regex with Use regex on, unanchored, so it may match anywhere in
+    /// the name - the same reach a plain term has as a substring. OrdinalIgnoreCase avoids allocating a lowercased copy
+    /// of every name each scan.
+    /// </summary>
+    private static bool NameMatches(string name, AlertRule rule, string term, Regex[] patterns, int index) =>
+        rule.UseRegex
+            ? index < patterns.Length && patterns[index].IsMatch(name)
+            : name.Contains(term, StringComparison.OrdinalIgnoreCase);
 }

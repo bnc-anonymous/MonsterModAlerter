@@ -99,7 +99,7 @@ internal sealed class DebugOverlay
                 inMapArea && match.Rule.ShowOnMap ? Color.LightGreen : Color.Orange);
 
             if (ReferenceEquals(match, firstShowingModCount))
-                WriteModBreakdown(match);
+                WriteModAndBuffBreakdown(match);
         }
     }
 
@@ -124,6 +124,27 @@ internal sealed class DebugOverlay
     /// Lists the entity's raw mod entries, marking which ones the count includes. This is how a number that disagrees
     /// with the monster's tooltip gets diagnosed rather than guessed at.
     /// </summary>
+    private void WriteModAndBuffBreakdown(RuleMatch match)
+    {
+        WriteModBreakdown(match);
+
+        // The buffs, so a name can be told to be a buff rather than a mod - which of a rule's two search switches it
+        // needs.
+        if (!match.Entity.TryGetComponent<Buffs>(out var buffs) || buffs?.BuffsList is not { } buffList)
+        {
+            WriteLine("    no Buffs on this monster", Color.Orange);
+            return;
+        }
+
+        WriteLine($"    {buffList.Count} buffs (Buffs.BuffsList)", Color.White);
+
+        foreach (var buff in buffList)
+        {
+            if (!string.IsNullOrEmpty(buff?.Name))
+                WriteLine($"      b {buff.Name}", Color.LightBlue);
+        }
+    }
+
     private void WriteModBreakdown(RuleMatch match)
     {
         if (!match.Entity.TryGetComponent<ObjectMagicProperties>(out var props) || props?.Mods is not { } mods)
@@ -132,7 +153,7 @@ internal sealed class DebugOverlay
             return;
         }
 
-        WriteLine($"    counted {match.ModCount} of {mods.Count} entries " +
+        WriteLine($"    {mods.Count} mods (ObjectMagicProperties.Mods), {match.ModCount} counted " +
                   $"(prefix '{RuleMatcher.RareModPrefix}', duplicates ignored)", Color.White);
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

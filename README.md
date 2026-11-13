@@ -12,7 +12,7 @@ Then tick **Enable** in the plugin's settings.
 
 The plugin works from the list of **Alert rules** in its settings. A new install starts with one example rule.
 
-Each rule has a **Search term**, matched against the names of a monster's modifiers and buffs, ignoring case. These are the game's internal names, such as `TormentHauntedMonsterThief` or `torment_cutthroat`, not the text shown in game.
+Each rule has a **Search term**, matched against the names of a monster's modifiers, its buffs, or both, as the rule's **Search mods** and **Search buffs** boxes say, ignoring case. These are the game's internal names, such as `TormentHauntedMonsterThief` (a modifier) or `torment_cutthroat` (a buff), not the text shown in game.
 
 - **Several terms**, separated by commas, must all be present: `mod1,mod2` marks only monsters carrying both.
 - **Use regex** treats each term as a regular expression: `MonsterMod.*Touched` matches every Touched modifier.
@@ -28,9 +28,9 @@ Each rule sets its own icon, tint, map and world icon sizes, priority and sound.
 - **Add to seen tally** adds what the rule matches to an on-screen tally for the current area, switched on under **Seen tally**.
 - **Match any entity** tests the rule against everything loaded, not only hostile monsters: critters, chests, shrines. The metadata path is searched as well, so `Metadata/Critters` marks every critter.
 
-## Finding modifier names
+## Finding modifier and buff names
 
-Turn on **Debug > Show overlay**, and **Show mod count** on a rule that matches the monster: the overlay lists the modifier entries of one monster that rule matched, and which of them were counted.
+Turn on **Debug > Show overlay**, and **Show mod count** on a rule that matches the monster: the overlay lists the modifiers and the buffs of one monster that rule matched, so you can tell which a name is, and which modifiers were counted.
 
 ## License
 

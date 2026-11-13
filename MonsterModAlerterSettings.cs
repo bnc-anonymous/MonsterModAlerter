@@ -70,9 +70,6 @@ public class MonsterModAlerterSettings : ISettings
     };
 
     [Submenu(CollapsedByDefault = true)]
-    public ScanSettings Scan { get; set; } = new();
-
-    [Submenu(CollapsedByDefault = true)]
     public DisplaySettings Display { get; set; } = new();
 
     [Submenu(CollapsedByDefault = true)]
@@ -115,24 +112,6 @@ public class MonsterModAlerterSettings : ISettings
         if (clicked && armed)
             ResetRequested = true;
     }
-}
-
-/// <summary>What a rule's search term is tested against. See RuleMatcher.</summary>
-public class ScanSettings
-{
-    /// <summary>
-    /// Whether search terms are tested against ObjectMagicProperties.Mods, the internal mod names such as
-    /// TormentHauntedMonsterThief. Does not affect the rare modifier count, which always reads the mods.
-    /// </summary>
-    [Menu("Search mods")]
-    public ToggleNode SearchMods { get; set; } = new(true);
-
-    /// <summary>
-    /// Whether search terms are tested against the Buffs component's names, such as torment_cutthroat. Some monsters
-    /// carry a mod only as a buff.
-    /// </summary>
-    [Menu("Search buffs")]
-    public ToggleNode SearchBuffs { get; set; } = new(true);
 }
 
 /// <summary>Where and when the plugin draws, against the game's panels and other plugins.</summary>
@@ -380,7 +359,7 @@ public class DebugSettings
     /// <summary>
     /// The debug overlay, top-left: match and rule counts, the remembered positions, the walk over every entity, map
     /// visibility, the draw region, and each match's icon sizes and map position, so an icon that is not drawn can be
-    /// told apart from one drawn wrong. The first match whose rule shows a mod count also lists its mod entries. See
+    /// told apart from one drawn wrong. The first match whose rule shows a mod count also lists its mods and buffs. See
     /// DebugOverlay.
     /// </summary>
     [Menu("Show overlay", "Lists matches, map visibility and each match's draw position,\ntop-left.")]
