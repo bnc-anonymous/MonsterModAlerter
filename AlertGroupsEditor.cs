@@ -29,6 +29,13 @@ internal static class AlertGroupsEditor
 
     private const int EndOfGroup = int.MaxValue;
 
+    /// <summary>
+    /// A group's or rule's title: an unframed tree node, an arrow and the text, rather than CollapsingHeader's framed bar
+    /// in the theme's header colour. Clickable across the row's width; the indent below it is this class's own, so
+    /// nothing is pushed for it.
+    /// </summary>
+    private const ImGuiTreeNodeFlags RowFlags = ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.NoTreePushOnOpen;
+
     /// <summary>Each group's or rule's ExileCore drawers, parsed on first draw and dropped with the object.</summary>
     private static readonly ConditionalWeakTable<object, List<ISettingsHolder>> DrawersByObject = new();
 
@@ -62,7 +69,7 @@ internal static class AlertGroupsEditor
             ImGui.SameLine();
             EnabledCheckbox(group.Enabled);
             ImGui.SameLine();
-            var open = ImGui.CollapsingHeader($"{group.HeaderText}###group");
+            var open = ImGui.TreeNodeEx($"{group.HeaderText}###group", RowFlags);
             ImGui.EndGroup();
 
             var (droppedGroup, droppedRule) = DroppedOnRow();
@@ -88,7 +95,7 @@ internal static class AlertGroupsEditor
                     ImGui.SameLine();
                     EnabledCheckbox(rule.Enabled);
                     ImGui.SameLine();
-                    var ruleOpen = ImGui.CollapsingHeader($"{rule.HeaderText}###rule");
+                    var ruleOpen = ImGui.TreeNodeEx($"{rule.HeaderText}###rule", RowFlags);
                     ImGui.EndGroup();
 
                     if (DroppedOnRow().Rule is { } source)
