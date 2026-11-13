@@ -39,11 +39,11 @@ internal sealed class EntityInspector
     /// <summary>AutoExpedition's green, as the cursor message and the craft square use for "this one".</summary>
     private static readonly SharpDX.Color HighlightColour = Colours.FromArgb(255, 90, 255, 120);
 
-    // DevTree's pin at its hovered size: its defaults (foot 4, stalk 100, text 1, in world units and text scale)
-    // doubled by its hovered expansion factor of 2.
+    // DevTree's pin at its hovered size: its defaults (foot 4, stalk 100, in world units) doubled by its hovered
+    // expansion factor of 2. The name on top stays at text scale 1, which the doubled 2 was too large for.
     private const float PinFootRadius = 8f;
     private const float PinStalkHeight = 200f;
-    private const float PinTextScale = 2f;
+    private const float PinTextScale = 1f;
 
     private bool _snapshotDue = true;
     private bool _showAllEntities;
