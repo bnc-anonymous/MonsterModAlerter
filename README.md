@@ -10,7 +10,7 @@ Then tick **Enable** in the plugin's settings.
 
 ## Usage
 
-The plugin works from the list of **Alert rules** in its settings. A new install starts with one example rule.
+The plugin works from the list of **Alert rules** in its settings. A new install starts with example groups, each switched off: tick one to try it.
 
 Each rule has a **Search term**, matched against the names of a monster's modifiers, its buffs, or both, as the rule's **Search mods** and **Search buffs** boxes say, ignoring case. These are the game's internal names, such as `TormentHauntedMonsterThief` (a modifier) or `torment_cutthroat` (a buff), not the text shown in game.
 

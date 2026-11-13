@@ -4,8 +4,8 @@ using System.Reflection;
 namespace MonsterModAlerter;
 
 /// <summary>
-/// Puts every setting back as shipped, except Enable, and leaves the example group as the only alert group. For the
-/// Reset all settings and rules button at the top of the menu.
+/// Puts every setting back as shipped, except Enable, and leaves the example groups (ExampleGroups) as the only alert
+/// groups. For the Reset all settings and rules button at the top of the menu.
 ///
 /// By reflection, after AutoExpedition's ResetAll and CraftUntilHighlighted's SettingsReset: a fresh settings object is
 /// made and each node's value copied from it, section by section, so "default" means whatever the property initialisers
@@ -33,8 +33,8 @@ internal static class SettingsReset
 
         Copy(new MonsterModAlerterSettings(), settings, true);
 
-        // The fresh object's group list is empty: the plugin seeds the example group on load, not the constructor.
-        settings.Groups.Content.Add(AlertGroup.Example());
+        // The fresh object's group list is empty: the plugin seeds the example groups on load, not the constructor.
+        settings.Groups.Content.AddRange(ExampleGroups.Create());
     }
 
     private static void Copy(object from, object to, bool root)

@@ -37,9 +37,9 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         // session - but later edits need a HUD restart.
         Order = Settings.Display.RenderOrder.Value;
 
-        // First run, or after every group is deleted, starts with the example group.
+        // First run, or after every group is deleted, starts with the example groups.
         if (Settings.Groups.Content.Count == 0)
-            Settings.Groups.Content.Add(AlertGroup.Example());
+            Settings.Groups.Content.AddRange(ExampleGroups.Create());
 
         RegisterHotkey(Settings.SeenTally.ToggleKey);
         ApplySettingsChanges();

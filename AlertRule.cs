@@ -25,13 +25,6 @@ public class AlertRule : ISettings
     // Made here rather than in an initializer, so it is attached again after JSON deserialization.
     public AlertRule() => IconPicker = new IconPickerNode(this);
 
-    /// <summary>The rule a new install starts with, and the one a reset leaves.</summary>
-    public static AlertRule Example() => new()
-    {
-        SearchTerm = new TextNode("TormentHauntedMonsterThief"),
-        Icon = MapIconsIndex.CorpseTypeUndead,
-    };
-
     /// <summary>Drawn on the rule's header by AlertGroupsEditor, not among its settings.</summary>
     [IgnoreMenu]
     public ToggleNode Enabled { get; set; } = new(true);
@@ -149,7 +142,7 @@ public class AlertRule : ISettings
 
     /// <summary>
     /// Saved by name, so the settings file stays readable and survives the enum being reordered. A rule added from the
-    /// menu starts with the large pink pentagon; the example rule sets its own.
+    /// menu starts with the large pink pentagon; the example rules (ExampleGroups) set their own.
     /// </summary>
     [JsonConverter(typeof(StringEnumConverter))]
     public MapIconsIndex Icon = MapIconsIndex.LootFilterLargePinkPentagon;

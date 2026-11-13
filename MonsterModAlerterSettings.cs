@@ -58,7 +58,7 @@ public class MonsterModAlerterSettings : ISettings
 
     /// <summary>
     /// The button at the top of the menu that puts every setting back to its default except Enable, and replaces the
-    /// alert groups with the example group (SettingsReset). Clickable only while Ctrl is held, so a stray click cannot
+    /// alert groups with the example groups (SettingsReset). Clickable only while Ctrl is held, so a stray click cannot
     /// undo the settings, as AutoExpedition's reset is; its tooltip says both, and shows while the button is disabled
     /// too. Made in the constructor because it needs the settings it resets.
     /// </summary>
@@ -85,7 +85,7 @@ public class MonsterModAlerterSettings : ISettings
 
     /// <summary>
     /// What to mark: named groups of rules, each rule one kind of monster or modifier. Left empty here and seeded with
-    /// the example group by the plugin: ExileCore deserializes settings without ObjectCreationHandling.Replace, so a
+    /// the example groups by the plugin: ExileCore deserializes settings without ObjectCreationHandling.Replace, so a
     /// list filled here would be appended to on every load.
     /// </summary>
     [IgnoreMenu]
@@ -145,7 +145,7 @@ public class MonsterModAlerterSettings : ISettings
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
         {
             ImGui.SetTooltip("Resets every setting to its default, except Enable, and replaces\n" +
-                             "the alert groups with the example group. Hold Ctrl to click it.");
+                             "the alert groups with the example groups. Hold Ctrl to click it.");
         }
 
         if (!armed)

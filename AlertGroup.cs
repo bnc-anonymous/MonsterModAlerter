@@ -12,14 +12,6 @@ namespace MonsterModAlerter;
 /// </summary>
 public class AlertGroup : ISettings
 {
-    /// <summary>The group a new install starts with, and the one a reset leaves: the example rule.</summary>
-    public static AlertGroup Example()
-    {
-        var group = new AlertGroup { Name = new TextNode("Example") };
-        group.Rules.Content.Add(AlertRule.Example());
-        return group;
-    }
-
     /// <summary>
     /// Off switches every rule in the group off, whatever its own Enabled says. Drawn on the group's header by
     /// AlertGroupsEditor, not among its settings.
