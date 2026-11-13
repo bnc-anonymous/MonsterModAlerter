@@ -477,11 +477,12 @@ public class AlertRule : ISettings
     }
 
     /// <summary>
-    /// The rule's header: its search term, or its metadata paths, and "(disabled)" in front when off.
+    /// The rule's name, as its header and its delete button show it: its search term, or its metadata paths when it
+    /// has none, with "[any]" in front for Match any entity.
     /// </summary>
     [JsonIgnore]
     [IgnoreMenu]
-    public string HeaderText
+    public string DisplayName
     {
         get
         {
@@ -491,17 +492,27 @@ public class AlertRule : ISettings
                 ? (HasMetadataPaths ? DescribeMetadataPaths() : "<no term>")
                 : SearchTerm.Value;
 
+            // A rule not restricted to monsters behaves differently enough - no Monster rarity, and it searches the
+            // metadata path - that its name says so without opening it.
+            return AnyEntity?.Value == true ? $"[any] {term}" : term;
+        }
+    }
+
+    /// <summary>
+    /// The rule's header: its display name, "(disabled)" in front when off and "[BAD REGEX]" after when its pattern
+    /// does not compile.
+    /// </summary>
+    [JsonIgnore]
+    [IgnoreMenu]
+    public string HeaderText
+    {
+        get
+        {
             // A rule that cannot compile its pattern matches nothing, which is indistinguishable from "no such monster
             // here" unless it is said.
-            if (PatternError != null)
-                term = $"{term}  [BAD REGEX]";
+            var badRegex = PatternError != null ? "  [BAD REGEX]" : "";
 
-            // A rule not restricted to monsters behaves differently enough - no Monster rarity, and it searches the
-            // metadata path - that the header says so without opening it.
-            if (AnyEntity?.Value == true)
-                term = $"[any] {term}";
-
-            return $"{(Enabled?.Value == true ? "" : "(disabled) ")}{term}";
+            return $"{(Enabled?.Value == true ? "" : "(disabled) ")}{DisplayName}{badRegex}";
         }
     }
 

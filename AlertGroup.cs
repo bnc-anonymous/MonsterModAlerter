@@ -44,17 +44,15 @@ public class AlertGroup : ISettings
     [IgnoreMenu]
     public ContentNode<AlertRule> Rules { get; set; } = new() { Content = new List<AlertRule>() };
 
-    /// <summary>The group's header: its name, "(disabled)" in front when off.</summary>
+    /// <summary>The group's name, as its header and its delete button show it, with a placeholder when blank.</summary>
     [JsonIgnore]
     [IgnoreMenu]
-    public string HeaderText
-    {
-        get
-        {
-            var name = string.IsNullOrWhiteSpace(Name?.Value) ? "<no name>" : Name.Value;
-            return $"{(Enabled?.Value == true ? "" : "(disabled) ")}{name}";
-        }
-    }
+    public string DisplayName => string.IsNullOrWhiteSpace(Name?.Value) ? "<no name>" : Name.Value;
+
+    /// <summary>The group's header: its display name, "(disabled)" in front when off.</summary>
+    [JsonIgnore]
+    [IgnoreMenu]
+    public string HeaderText => $"{(Enabled?.Value == true ? "" : "(disabled) ")}{DisplayName}";
 
     public override string ToString() => HeaderText;
 }

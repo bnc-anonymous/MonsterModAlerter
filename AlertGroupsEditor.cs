@@ -112,7 +112,7 @@ internal static class AlertGroupsEditor
 
                         DrawSettingsOf(rule);
 
-                        if (CtrlButton("Delete rule"))
+                        if (CtrlButton($"Delete rule: {rule.DisplayName}###deleteRule"))
                             ruleToDelete = new RulePosition(g, r);
 
                         ImGui.Unindent();
@@ -126,7 +126,7 @@ internal static class AlertGroupsEditor
 
                 ImGui.SameLine();
 
-                if (CtrlButton("Delete group"))
+                if (CtrlButton($"Delete group: {group.DisplayName}###deleteGroup"))
                     groupToDelete = g;
 
                 ImGui.Unindent();
