@@ -155,7 +155,12 @@ public class AlertRule : ISettings
     [JsonIgnore]
     public IconPickerNode IconPicker { get; set; }
 
-    [Menu("Tint")]
+    /// <summary>
+    /// Multiplies each colour channel of the icon by the tint's, so it can only take colour away: a white icon takes
+    /// the tint's colour, while the red flag tinted yellow stays red (seen in game, 2026-11-13). Changing a coloured
+    /// icon's hue would need recoloured copies of the icon drawn from files, which was considered and dropped.
+    /// </summary>
+    [Menu("Tint", "Only really noticeable on lighter coloured icons.")]
     public ColorNode Tint { get; set; } = new(Color.White);
 
     /// <summary>
