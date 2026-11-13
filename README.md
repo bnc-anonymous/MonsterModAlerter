@@ -1,14 +1,25 @@
 # MonsterModAlerter
 
-An ExileApi plugin for Path of Exile 1 that marks monsters by their modifiers, buffs, metadata path and rarity.
+An ExileApi plugin for Path of Exile 1 that allows you to mark monsters based on their modifiers, buffs, metadata path, rarity, etc.
 
 ## Features
 
 - Customisable icons on the map and in the world
-- The number of rare modifiers shown on the icon (optional)
-- A sound when a monster with a chosen modifier or buff comes into range (optional)
-- Icons that stay on the map after the monster leaves range (optional)
-- An entity inspector, modelled on DevTree's, for finding modifiers and buffs to copy into a rule
+- Optionally play a sound when a monster with a chosen modifier or buff is in range
+- Optionally display the number of rare modifiers a rare has
+- An entity inspector, based on DevTree, for easily finding modifiers and buffs to copy into a rule (see second image)
+
+## What can it do?
+
+The example groups it comes with:
+
+- Highlight which rares drop lots of gold when using Allflame Ember of the Gilded
+- Play a warning sound when a monster has a dangerous tormented spirit modifier
+- Mark every rare with a large icon and its number of rare modifiers
+- Pick out rares with dangerous modifiers, such as Siphons Flask Charges or Proximity Shield, in red
+- Mark divination touched monsters
+- Mark critters on the map and count them per area
+- Find albino critters for fishing
 
 ![The settings with an example group open, beside the large map marking rare monsters with icons, modifier counts and labels](images/1.jpg)
 
@@ -22,9 +33,9 @@ Then tick **Enable** in the plugin's settings.
 
 ## Usage
 
-Rules are kept in groups under **Alert rules**. A new install starts with example groups, each switched off: tick one to try it.
+Rules are kept in groups under **Alert rules**. A new install starts with some example groups, each switched off. Tick to enable.
 
-Rules match the game's internal names for modifiers and buffs, such as `TormentHauntedMonsterThief`, not the text shown in game. **Inspect world entities**, at the top of the settings, lists them for the monsters around you.
+Rules match the game's internal names for modifiers and buffs, such as `TormentHauntedMonsterThief`, not the text shown in game under the monster. **Inspect world entities**, at the top of the settings, lists them for the monsters around you.
 
 ## License
 
