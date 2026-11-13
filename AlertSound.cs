@@ -97,8 +97,8 @@ internal sealed class AlertSound
             _announcedIds.Add(match.EntityId);
     }
 
-    /// <summary>Plays the default sound at a volume in per cent, for the Sound section's test button.</summary>
-    public static void PlayTest(int volumePercent) => Play(Default, volumePercent);
+    /// <summary>Plays a sound by name at a volume in per cent, for the Sound section's test button.</summary>
+    public static void PlayTest(string name, int volumePercent) => Play(name, volumePercent);
 
     /// <summary>
     /// Plays a sound from the HUD's Sounds folder by name at a volume in per cent (above 100 louder, clipped), without

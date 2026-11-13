@@ -316,7 +316,9 @@ public class SoundSettings
     [Menu("Volume (%)")]
     public RangeNode<int> Volume { get; set; } = new(100, 0, 300);
 
-    /// <summary>Plays the default sound at Volume, to hear it.</summary>
+    /// <summary>
+    /// A dropdown of the HUD's sounds and a button that plays the one picked at Volume, to hear each.
+    /// </summary>
     [JsonIgnore]
     public CustomNode PlayTestUi { get; set; }
 
@@ -336,10 +338,31 @@ public class SoundSettings
         "rather than once per monster.")]
     public ToggleNode LoopWhileAlive { get; set; } = new(false);
 
+    /// <summary>The sound the test button plays. Only for listening, so not saved.</summary>
+    private string _testSound = AlertSound.Default;
+
     private void DrawPlayTest()
     {
+        ImGui.SetNextItemWidth(ImGui.GetFontSize() * 12f);
+
+        if (ImGui.BeginCombo("###mmaTestSound", _testSound))
+        {
+            foreach (var name in AlertSound.SoundNames)
+            {
+                if (name == AlertSound.None)
+                    continue;
+
+                if (ImGui.Selectable(name, name == _testSound))
+                    _testSound = name;
+            }
+
+            ImGui.EndCombo();
+        }
+
+        ImGui.SameLine();
+
         if (ImGui.Button("Play test sound###mmaPlayTestSound"))
-            AlertSound.PlayTest(Volume.Value);
+            AlertSound.PlayTest(_testSound, Volume.Value);
     }
 }
 
