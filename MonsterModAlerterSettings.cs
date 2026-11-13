@@ -32,6 +32,17 @@ public class MonsterModAlerterSettings : ISettings
     }
 
     /// <summary>
+    /// The button at the very top of the menu that opens the Inspect world entities window (EntityInspector): what each
+    /// nearby entity can be matched by, ready to copy into a rule.
+    /// </summary>
+    [JsonIgnore]
+    public CustomNode InspectEntitiesUi { get; set; } = new(() =>
+    {
+        if (ImGui.Button("Inspect world entities###mmaInspectEntities"))
+            EntityInspector.Open = true;
+    });
+
+    /// <summary>
     /// The button at the top of the menu that puts every setting back to its default except Enable, and replaces the
     /// alert groups with the example group (SettingsReset). Clickable only while Ctrl is held, so a stray click cannot
     /// undo the settings, as AutoExpedition's reset is; its tooltip says both, and shows while the button is disabled

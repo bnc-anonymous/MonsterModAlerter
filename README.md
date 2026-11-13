@@ -28,9 +28,9 @@ Each rule sets its own icon, tint and priority, its map icon, its world icon, bo
 - **Add to seen tally** adds what the rule matches to an on-screen tally for the current area, switched on under **Seen tally**.
 - **Match any entity** tests the rule against everything loaded, not only hostile monsters: critters, chests, shrines. The metadata path is searched as well, so `Metadata/Critters` marks every critter.
 
-## Finding modifier and buff names
+## Inspecting entities
 
-Turn on **Debug > Show overlay**, and **Show mod count** on a rule that matches the monster: the overlay lists the modifiers and the buffs of one monster that rule matched, so you can tell which a name is, and which modifiers were counted.
+**Inspect world entities**, at the top of the settings, opens a window listing the monsters around you, nearest first, or every entity with **Show all entities** ticked. Open an entry to see what a rule can match it by: its metadata path, its modifiers and its buffs, each in a text box you can select and copy with Ctrl+C. Hovering an entry outlines that entity in the world. **Refresh** reads the list again.
 
 ## License
 

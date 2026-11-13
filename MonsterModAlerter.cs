@@ -24,6 +24,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     private readonly EntityScan _scan;
     private readonly AlertSound _sound = new();
     private readonly Stopwatch _scanTimer = Stopwatch.StartNew();
+    private readonly EntityInspector _entityInspector = new();
     private MatchDrawing _matchDrawing;
     private DebugOverlay _debugOverlay;
 
@@ -85,6 +86,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         _scan.Clear();
         _sound.ForgetAnnounced();
         _matchDrawing?.ForgetCornerMap();
+        _entityInspector.Invalidate();
 
         // "This map" is the whole of what the tally means, so a new area is where it starts again.
         _tally.Clear();
@@ -164,6 +166,10 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     {
         // Before the Enable check, so a message raised with the plugin switched off is still seen.
         CursorMessage.Draw(Graphics, GameController);
+
+        // A lookup tool, so drawn with the plugin switched off as well.
+        if (EntityInspector.Open && Safe.Read(GameController, static g => g.InGame, false))
+            _entityInspector.Draw(GameController, Graphics);
 
         var matches = _scan.Matches;
         var remembered = _scan.Remembered;
