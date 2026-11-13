@@ -70,9 +70,10 @@ internal sealed class RememberedPositions
     }
 
     /// <summary>
-    /// The remembered positions whose rule still asks for them, live entities' included, for drawing. Which of them to
-    /// show is decided each frame (MatchDrawing.Draw): those whose entity is not drawn live. Deciding it here, at the
-    /// scan, left a gap of up to a scan interval when a monster left range, in which neither icon was drawn.
+    /// The remembered positions whose rule still asks for them, live entities' included, for drawing, in ascending
+    /// priority so a higher-priority icon and its number are drawn over a lower one's. Which of them to show is decided
+    /// each frame (MatchDrawing.Draw): those whose entity is not drawn live. Deciding it here, at the scan, left a gap
+    /// of up to a scan interval when a monster left range, in which neither icon was drawn.
     /// </summary>
     /// <param name="rules">
     /// The rules the scan ran. A position whose rule is not among them - switched off, in a group switched off, or
@@ -88,6 +89,8 @@ internal sealed class RememberedPositions
             if (entry.Rule.RememberPosition && rules.Contains(entry.Rule))
                 snapshot.Add(entry);
         }
+
+        snapshot.Sort((a, b) => a.Rule.Priority.Value.CompareTo(b.Rule.Priority.Value));
 
         return snapshot;
     }

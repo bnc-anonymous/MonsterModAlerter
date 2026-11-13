@@ -13,6 +13,9 @@ namespace MonsterModAlerter;
 /// <summary>
 /// Draws the scan's matches and remembered positions: icons, boxes, labels and counts in the world, then icons and
 /// counts on whichever map is up, limited to that map's area.
+///
+/// Everything is drawn in ascending priority, an entity's number with its icons: after the entity's highest-priority
+/// match, so the number sits over its own icons and under a higher-priority entity's icon and number, never over them.
 /// </summary>
 internal sealed class MatchDrawing
 {
@@ -24,8 +27,14 @@ internal sealed class MatchDrawing
     /// <summary>One per match, in the same order, refilled every frame by ReadPlacements.</summary>
     private readonly List<Placement> _placements = new();
 
-    /// <summary>Entities that already have a count in the pass being drawn; refilled by DrawCounts.</summary>
-    private readonly HashSet<uint> _numberedIds = new();
+    /// <summary>Each entity's highest-priority match, by index: where its number goes in the drawing order.</summary>
+    private readonly Dictionary<uint, int> _lastMatchOfEntity = new();
+
+    /// <summary>The match whose number each entity shows on the map, by index; refilled by FindNumbers.</summary>
+    private readonly Dictionary<uint, int> _numberOnMap = new();
+
+    /// <summary>The match whose number each entity shows in the world, by index; refilled by FindNumbers.</summary>
+    private readonly Dictionary<uint, int> _numberInWorld = new();
 
     /// <summary>
     /// How long the corner map's rectangle is kept before it is read again. It changes only with the resolution, the
@@ -152,15 +161,16 @@ internal sealed class MatchDrawing
     {
         _rememberedDrawn.Clear();
         ReadPlacements(gameController, matches, mapArea != null);
+        FindNumbers(matches);
 
         // The world first: the game draws the large map over the world, so its icons go over the world's here too.
         for (var i = 0; i < matches.Count; i++)
         {
             if (_placements[i].InWorld)
                 DrawInWorld(_placements[i].ScreenPoint, matches[i], region);
-        }
 
-        DrawCounts(matches, onMap: false, region);
+            DrawNumberAfter(i, matches, onMap: false, region);
+        }
 
         if (mapArea is not { } area)
             return;
@@ -189,10 +199,9 @@ internal sealed class MatchDrawing
 
                 if (placement.OnMap && Overlaps(area, placement.MapPoint, new Vector2(iconSize)))
                     DrawIcon(placement.MapPoint, iconSize, matches[i].Rule);
-            }
 
-            // After every icon, so a number is never buried under one.
-            DrawCounts(matches, onMap: true, area);
+                DrawNumberAfter(i, matches, onMap: true, area);
+            }
         }
     }
 
@@ -330,58 +339,59 @@ internal sealed class MatchDrawing
     }
 
     /// <summary>
-    /// Draws each entity's modifier count as a bare number, e.g. "12", on the map or in the world. Centred on the
-    /// entity by default so it reads as belonging to that icon rather than to a neighbouring one.
+    /// Works out, once a frame, each entity's highest-priority match and which match's number it shows: one number per
+    /// entity, however many of its rules ask for one, since two would land on the same pixels. The highest-priority
+    /// rule that shows a number gives it, on the map; in the world, the highest whose rule also draws it there, so a
+    /// lower-priority rule that asks still gets its number in the world.
     /// </summary>
-    /// <param name="area">The map area for the map, or the draw region for the world.</param>
-    private void DrawCounts(List<RuleMatch> matches, bool onMap, RectangleF area)
+    private void FindNumbers(List<RuleMatch> matches)
     {
-        var any = false;
-        foreach (var match in matches)
-        {
-            if (match.Rule.ShowModCount)
-            {
-                any = true;
-                break;
-            }
-        }
+        _lastMatchOfEntity.Clear();
+        _numberOnMap.Clear();
+        _numberInWorld.Clear();
 
-        if (!any)
-            return;
-
-        // One number per entity, however many of its rules ask for one - two would land on the same pixels. Walked
-        // backwards because the list is sorted by ascending priority, so this hands the number to the highest-priority
-        // rule, which matters once rules can be counting different things.
-        _numberedIds.Clear();
-
-        for (var i = matches.Count - 1; i >= 0; i--)
+        // Ascending priority, so a later match overwrites a lower-priority one.
+        for (var i = 0; i < matches.Count; i++)
         {
             var match = matches[i];
             var rule = match.Rule;
+            _lastMatchOfEntity[match.EntityId] = i;
 
             if (!rule.ShowModCount || match.ModCount < rule.ModCountMinimum.Value)
                 continue;
 
-            // In the world only for the rules that ask, and checked before the entity is numbered, so a lower-priority
-            // rule that asks still gets its number there.
-            if (!onMap && !rule.DrawModCountInWorld)
-                continue;
+            _numberOnMap[match.EntityId] = i;
 
-            if (!_numberedIds.Add(match.EntityId))
-                continue;
-
-            var placement = _placements[i];
-
-            if (onMap ? !placement.OnMap : !placement.InWorld)
-                continue;
-
-            var text = match.ModCount.ToString();
-            var size = _graphics.MeasureText(text);
-            var at = (onMap ? placement.MapPoint : placement.ScreenPoint) + CountOffsetOf(rule);
-
-            if (onMap ? Overlaps(area, at, size) : area.Contains(at.X, at.Y))
-                DrawNumber(text, size, at, rule.ModCountColour.Value);
+            if (rule.DrawModCountInWorld)
+                _numberInWorld[match.EntityId] = i;
         }
+    }
+
+    /// <summary>
+    /// Draws the entity's number, as a bare number such as "12", when match i is the entity's highest-priority match,
+    /// the point in the drawing order its number belongs. Drawn where the numbering match is placed, in that match's
+    /// rule's colour and offset.
+    /// </summary>
+    /// <param name="area">The map area for the map, or the draw region for the world.</param>
+    private void DrawNumberAfter(int i, List<RuleMatch> matches, bool onMap, RectangleF area)
+    {
+        var id = matches[i].EntityId;
+
+        if (_lastMatchOfEntity[id] != i || !(onMap ? _numberOnMap : _numberInWorld).TryGetValue(id, out var n))
+            return;
+
+        var match = matches[n];
+        var placement = _placements[n];
+
+        if (onMap ? !placement.OnMap : !placement.InWorld)
+            return;
+
+        var text = match.ModCount.ToString();
+        var size = _graphics.MeasureText(text);
+        var at = (onMap ? placement.MapPoint : placement.ScreenPoint) + CountOffsetOf(match.Rule);
+
+        if (onMap ? Overlaps(area, at, size) : area.Contains(at.X, at.Y))
+            DrawNumber(text, size, at, match.Rule.ModCountColour.Value);
     }
 
     /// <summary>Where a rule's number goes, from the icon's centre: its Mod count X offset and Y offset.</summary>
