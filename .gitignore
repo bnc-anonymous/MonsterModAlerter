@@ -1,7 +1,10 @@
-# Build artifacts — the HUD compiles from source, these are regenerable
 bin/
 obj/
-
-# IDE
 .vs/
 *.user
+.claude/
+
+# Private working notes: they hold local paths and never reach a published copy.
+CLAUDE.md
+NOTES.md
+STATE.md
