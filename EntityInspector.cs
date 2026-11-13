@@ -99,7 +99,10 @@ internal sealed class EntityInspector
                 .Where(entity => filter.Length == 0 || MatchesFilter(entity, filter))
                 .ToList();
 
-            ImGui.TextDisabled($"{shown.Count} of {_snapshot.Count}, nearest first");
+            ImGui.TextDisabled(_showAllEntities
+                ? $"Showing {shown.Count} {(shown.Count == 1 ? "entity" : "entities")}, nearest first"
+                : $"Showing {shown.Count} {(shown.Count == 1 ? "monster" : "monsters")} out of {_snapshot.Count} " +
+                  "total entities, nearest first");
             ImGui.Separator();
 
             if (ImGui.BeginChild("##mmaEntities"))
