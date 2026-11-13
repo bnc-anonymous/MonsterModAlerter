@@ -165,17 +165,18 @@ public class DisplaySettings
 
     /// <summary>
     /// ExileCore's plugin Order (BaseSettingsPlugin.Order). Plugins render in ascending Order, so a higher value draws
-    /// on top. A plugin that sets none, as MinimapIcons does not (its poe1 source, read 2026-11-13), draws at 0, so the
-    /// default of 5000 draws this plugin's icons over MinimapIcons'. ExileCore sorts once, after every plugin is
-    /// initialised, so a change takes effect at the next HUD start.
+    /// on top. A plugin that sets none, as MinimapIcons does not (its poe1 source, read 2026-11-13), draws at 0;
+    /// DeepwaterEngagementSuite sets 10000, the highest fixed Order among the plugins installed with this HUD. The
+    /// default of 15000 is above both. ExileCore sorts once, after every plugin is initialised, so a change takes
+    /// effect at the next HUD start.
     /// </summary>
     [Menu("Render order",
         "Plugins draw in this order, lowest first, so a higher value draws\n" +
         "this plugin over the others. MinimapIcons, for example, draws at\n" +
-        "0, so at the default of 5000 these icons go over its own.\n" +
+        "0, so at the default of 15000 these icons go over its own.\n" +
         "\n" +
         "Read when the HUD loads the plugin.")]
-    public RangeNode<int> RenderOrder { get; set; } = new(5000, -1000, 100000);
+    public RangeNode<int> RenderOrder { get; set; } = new(15000, -1000, 100000);
 }
 
 /// <summary>
