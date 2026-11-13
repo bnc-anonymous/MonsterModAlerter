@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using ExileCore;
 using ExileCore.Shared.Interfaces;
@@ -62,6 +63,9 @@ internal static class AlertGroupsEditor
         {
             var group = groups[g];
 
+            if (g > 0)
+                RowSpacing();
+
             // Keyed by the object, not its index, so a header keeps its open state when the group moves.
             ImGui.PushID(RuntimeHelpers.GetHashCode(group));
 
@@ -89,6 +93,10 @@ internal static class AlertGroupsEditor
                 for (var r = 0; r < rules.Count; r++)
                 {
                     var rule = rules[r];
+
+                    if (r > 0)
+                        RowSpacing();
+
                     ImGui.PushID(RuntimeHelpers.GetHashCode(rule));
 
                     ImGui.BeginGroup();
@@ -150,6 +158,9 @@ internal static class AlertGroupsEditor
         if (groupToDelete is { } gd && gd < groups.Count)
             groups.RemoveAt(gd);
     }
+
+    /// <summary>Half a line of space between one group or rule and the next, so the rows read apart.</summary>
+    private static void RowSpacing() => ImGui.Dummy(new Vector2(0f, ImGui.GetTextLineHeight() * 0.5f));
 
     /// <summary>The "=" handle a group or rule is dragged by, showing its name while dragged.</summary>
     private static void DragHandle<T>(string payloadType, T payload, string name) where T : unmanaged
