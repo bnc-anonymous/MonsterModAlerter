@@ -225,7 +225,7 @@ public class AlertRule
     public AlertRule()
     {
         // Wired here (not in an initializer) so it is re-attached after JSON deserialization.
-        IconPicker = new PickerNode(this);
+        IconPicker = new IconPickerNode(this);
     }
 
     public static AlertRule Default() => new AlertRule
@@ -280,7 +280,7 @@ public class AlertRule
 
     [Menu("Icon")]
     [JsonIgnore]
-    public PickerNode IconPicker { get; set; }
+    public IconPickerNode IconPicker { get; set; }
 
     [Menu("Minimap Icon Size", "Size of this rule's icon on the minimap / large map, in pixels.")]
     public RangeNode<int> IconSize { get; set; } = new RangeNode<int>(32, 4, 100);
@@ -469,7 +469,7 @@ public class AlertRule
     /// so the grid layout, filtering and sizing match the rest of the HUD.
     /// </summary>
     [Submenu(RenderMethod = nameof(Render))]
-    public class PickerNode(AlertRule rule)
+    public class IconPickerNode(AlertRule rule)
     {
         private string _filter = "";
         private bool _shown;

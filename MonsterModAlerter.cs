@@ -32,7 +32,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// false for the rest, where a chest or a door has no life to be alive with and asking would
     /// hide it. Their equivalent check is a Life component reading zero — see <see cref="IsDead"/>.
     /// </param>
-    private sealed record Match(
+    private sealed record RuleMatch(
         Entity Entity, AlertRule Rule, string MatchedName, int ModCount, bool CheckAlive = true,
         int Slot = 0, int SlotCount = 1);
 
@@ -50,15 +50,15 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// the grid position rather than the Entity: the entity is gone from the list by the time this
     /// is drawn, and reading a stale one is not safe.
     /// </summary>
-    private sealed record Remembered(uint Id, Vector2 GridPos, AlertRule Rule, int ModCount);
+    private sealed record RememberedPosition(uint Id, Vector2 GridPos, AlertRule Rule, int ModCount);
 
     // Scan() builds a fresh list and swaps it in; Render() reads the reference once. The swap is
     // atomic, so the two never touch the same list even if Tick runs off the render thread.
-    private volatile List<Match> _matches = new();
-    private volatile List<Remembered> _outOfRange = new();
+    private volatile List<RuleMatch> _matches = new();
+    private volatile List<RememberedPosition> _outOfRange = new();
 
     // Owned by the scan thread alone; Render only ever sees the _outOfRange snapshot above.
-    private readonly Dictionary<uint, Remembered> _remembered = new();
+    private readonly Dictionary<uint, RememberedPosition> _remembered = new();
 
     private readonly HashSet<uint> _alertedEntityIds = new();
 
@@ -114,8 +114,8 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
     public override void AreaChange(AreaInstance area)
     {
-        _matches = new List<Match>();
-        _outOfRange = new List<Remembered>();
+        _matches = new List<RuleMatch>();
+        _outOfRange = new List<RememberedPosition>();
         _remembered.Clear();
         _alertedEntityIds.Clear();
 
@@ -139,11 +139,11 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     private void ForceRefresh()
     {
         _alertedEntityIds.Clear();
-        _matches = new List<Match>();
+        _matches = new List<RuleMatch>();
 
         // Remembered positions are dropped too: Refresh Now exists to re-derive everything from
         // the current state, and keeping ghosts would defeat that.
-        _outOfRange = new List<Remembered>();
+        _outOfRange = new List<RememberedPosition>();
         _remembered.Clear();
         _scanTimer.Restart();
 
@@ -199,13 +199,13 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         if (rules.Length == 0)
         {
-            _matches = new List<Match>();
-            _outOfRange = new List<Remembered>();
+            _matches = new List<RuleMatch>();
+            _outOfRange = new List<RememberedPosition>();
             _remembered.Clear();
             return;
         }
 
-        var found = new List<Match>();
+        var found = new List<RuleMatch>();
 
         // Reused across entities within this scan; local so a Refresh Now from the UI thread
         // cannot collide with a scan in progress.
@@ -232,7 +232,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         }
 
         // Refilled per entity by FindMatch; allocated once for the same reason as `values`.
-        var collected = new List<Match>(4);
+        var collected = new List<RuleMatch>(4);
 
         // Every monster the game currently has loaded, whatever its state. Absence from this, at a
         // spot we are standing next to, is what proves a remembered monster is gone — see
@@ -380,7 +380,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
             if (match.Rule.RememberPosition)
             {
                 _remembered[entity.Id] =
-                    new Remembered(entity.Id, entity.GridPosNum, match.Rule, match.ModCount);
+                    new RememberedPosition(entity.Id, entity.GridPosNum, match.Rule, match.ModCount);
             }
             else
             {
@@ -448,16 +448,16 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// The remembered monsters that are not currently in range, so Render can draw them faded
     /// without doubling up on the ones it is already drawing live.
     /// </summary>
-    private List<Remembered> BuildOutOfRange(List<Match> live)
+    private List<RememberedPosition> BuildOutOfRange(List<RuleMatch> live)
     {
         if (_remembered.Count == 0)
-            return new List<Remembered>();
+            return new List<RememberedPosition>();
 
         var liveIds = new HashSet<uint>(live.Count);
         foreach (var match in live)
             liveIds.Add(match.Entity.Id);
 
-        var stale = new List<Remembered>(_remembered.Count);
+        var stale = new List<RememberedPosition>(_remembered.Count);
         foreach (var entry in _remembered.Values)
         {
             // Dropped rather than kept when its rule is switched off or deleted, so stale icons
@@ -480,7 +480,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// is false.
     /// </param>
     /// <param name="anyOk">Whether Match Any Entity rules should be offered this entity.</param>
-    private static Match FindMatch(
+    private static RuleMatch FindMatch(
         Entity entity,
         AlertRule[] rules,
         bool monsterOk,
@@ -490,7 +490,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         List<string> values,
         HashSet<string> countedMods,
         bool all,
-        List<Match> collected,
+        List<RuleMatch> collected,
         bool checkAlive)
     {
         collected.Clear();
@@ -537,7 +537,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         // No early-out on an empty value list: a rule can now match on the monster filter alone,
         // and such a rule must still fire for a monster carrying no mods or buffs at all.
-        Match best = null;
+        RuleMatch best = null;
         var path = entity.Path;
 
         foreach (var rule in rules)
@@ -577,7 +577,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 if (modCount < rule.ModCountMinimum.Value)
                     continue;
 
-                best = Keep(new Match(entity, rule, rule.Metadata.Describe(), modCount, checkAlive));
+                best = Keep(new RuleMatch(entity, rule, rule.Metadata.Describe(), modCount, checkAlive));
                 continue;
             }
 
@@ -625,7 +625,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
                 if (shown < rule.ModCountMinimum.Value)
                     continue;
 
-                best = Keep(new Match(entity, rule, display, shown, checkAlive));
+                best = Keep(new RuleMatch(entity, rule, display, shown, checkAlive));
             }
         }
 
@@ -633,7 +633,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
         // Every match is collected when asked for; `best` still tracks the highest priority one,
         // which is what decides the remembered icon and the alert sound.
-        Match Keep(Match match)
+        RuleMatch Keep(RuleMatch match)
         {
             if (all)
                 collected.Add(match);
@@ -964,7 +964,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// Reports what the draw path actually decided this frame, so an invisible icon can be told
     /// apart from a wrongly-sized one without guessing.
     /// </summary>
-    private void DrawDebugOverlay(List<Match> matches, RectangleF region, IngameUIElements ingameUi, bool minimapVisible)
+    private void DrawDebugOverlay(List<RuleMatch> matches, RectangleF region, IngameUIElements ingameUi, bool minimapVisible)
     {
         var y = 120f;
         var line = 18f;
@@ -1027,7 +1027,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         }
     }
 
-    private static Match FirstCounting(List<Match> matches)
+    private static RuleMatch FirstCounting(List<RuleMatch> matches)
     {
         foreach (var match in matches)
             if (match.Rule.ShowModCount)
@@ -1040,7 +1040,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// Lists the monster's raw mod entries, marking which ones the count includes. This is how a
     /// number that disagrees with the monster's tooltip gets diagnosed rather than guessed at.
     /// </summary>
-    private static void WriteModBreakdown(Match match, Action<string, Color> write)
+    private static void WriteModBreakdown(RuleMatch match, Action<string, Color> write)
     {
         if (!match.Entity.TryGetComponent<ObjectMagicProperties>(out var props) || props?.Mods is not { } mods)
         {
@@ -1091,7 +1091,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
 
     // GridToMap handles the small minimap and the open large map, including camera rotation
     // and per-cell terrain height.
-    private void DrawOnMinimap(Match match, RectangleF region)
+    private void DrawOnMinimap(RuleMatch match, RectangleF region)
     {
         var gridPos = match.Entity.GridPosNum;
         var point = Graphics.GridToMap(gridPos, gridPos);
@@ -1106,7 +1106,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// Draws each monster's modifier count as a bare number, e.g. "12". Centred on the monster so
     /// it reads as belonging to that dot rather than to a neighbouring one.
     /// </summary>
-    private void DrawModCounts(List<Match> matches, RectangleF region, bool minimapVisible)
+    private void DrawModCounts(List<RuleMatch> matches, RectangleF region, bool minimapVisible)
     {
         var settings = Settings.ModCount;
         var alsoWorld = settings.DrawInWorld;
@@ -1204,7 +1204,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         Graphics.DrawText(text, pos, tint);
     }
 
-    private void DrawInWorld(Match match, RectangleF region)
+    private void DrawInWorld(RuleMatch match, RectangleF region)
     {
         var world = Settings.World;
         var screenPos = GameController.IngameState.Camera.WorldToScreen(match.Entity.PosNum);
@@ -1263,7 +1263,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
     /// "was here" rather than "is here". Drawn from a stored grid position, never from the entity:
     /// by definition it is no longer in the entity list.
     /// </summary>
-    private void DrawRemembered(List<Remembered> stale, RectangleF region)
+    private void DrawRemembered(List<RememberedPosition> stale, RectangleF region)
     {
         if (stale.Count == 0)
             return;
@@ -1312,7 +1312,7 @@ public class MonsterModAlerter : BaseSettingsPlugin<MonsterModAlerterSettings>
         var loop = Settings.Sound.LoopWhileAlive.Value;
 
         // matches is priority-ascending, so the last eligible match is the most important one.
-        Match target = null;
+        RuleMatch target = null;
         foreach (var match in matches)
         {
             if (!match.Rule.PlaySound)
