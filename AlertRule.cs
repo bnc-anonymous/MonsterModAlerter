@@ -82,18 +82,22 @@ public class AlertRule : ISettings
     /// <summary>
     /// Comma-separated parts of the entity's metadata path, e.g. Metadata/Monsters/BeehiveBehemoth, each matched as a
     /// case-insensitive substring. They are ORed, since they name alternatives rather than conditions that must all
-    /// hold. Blank matches every entity, with or without Exclude metadata paths: treating a blank exclusion as
-    /// "everything excluded" would switch a rule off the moment the text was cleared.
+    /// hold. Blank matches every entity.
     /// </summary>
     [Menu("Metadata paths",
         "Comma-separated parts of the metadata path; any one matches,\n" +
         "e.g. Metadata/Monsters/BeehiveBehemoth. Blank matches all.")]
     public TextNode MetadataPaths { get; set; } = new("");
 
-    /// <summary>Matches every entity except those Metadata paths name, e.g. everything but a given family.</summary>
-    [Menu("Exclude metadata paths")]
-    [ConditionalDisplay(nameof(HasMetadataPaths))]
-    public ToggleNode ExcludeMetadataPaths { get; set; } = new(false);
+    /// <summary>
+    /// Comma-separated parts of the metadata path, matched as Metadata paths are, that keep an entity from matching
+    /// whatever else it matches. With Metadata paths it narrows them: Metadata/Monsters here and BeehiveBehemoth below
+    /// marks every monster but the beehives. Alone, it matches every entity except those it names.
+    /// </summary>
+    [Menu("Excluded metadata paths",
+        "Comma-separated parts of the metadata path; an entity on any\n" +
+        "of these never matches, e.g. Metadata/Monsters/BeehiveBehemoth.")]
+    public TextNode ExcludedMetadataPaths { get; set; } = new("");
 
     /// <summary>
     /// Off: the rule sees only hostile monsters, and Monster rarity applies. On: it is tested against every loaded
@@ -333,10 +337,6 @@ public class AlertRule : ISettings
 
     [JsonIgnore]
     [IgnoreMenu]
-    public bool HasMetadataPaths => MetadataPathList.Length > 0;
-
-    [JsonIgnore]
-    [IgnoreMenu]
     public bool ShowsWorldIcon => ShowInWorld && DrawWorldIcon;
 
     [JsonIgnore]
@@ -353,54 +353,84 @@ public class AlertRule : ISettings
 
     private string _metadataPathSource;
     private string[] _metadataPathList = [];
+    private string _excludedMetadataPathSource;
+    private string[] _excludedMetadataPathList = [];
 
     /// <summary>MetadataPaths split on commas, re-split only when the text changes.</summary>
     [JsonIgnore]
-    public string[] MetadataPathList
-    {
-        get
-        {
-            var source = MetadataPaths?.Value ?? "";
-            if (source != _metadataPathSource)
-            {
-                _metadataPathSource = source;
-                _metadataPathList =
-                    source.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            }
+    [IgnoreMenu]
+    public string[] MetadataPathList => SplitOnCommas(MetadataPaths, ref _metadataPathSource, ref _metadataPathList);
 
-            return _metadataPathList;
+    /// <summary>ExcludedMetadataPaths split on commas, re-split only when the text changes.</summary>
+    [JsonIgnore]
+    [IgnoreMenu]
+    public string[] ExcludedMetadataPathList =>
+        SplitOnCommas(ExcludedMetadataPaths, ref _excludedMetadataPathSource, ref _excludedMetadataPathList);
+
+    /// <summary>
+    /// Whether Metadata paths or Excluded metadata paths names anything: either is enough for a rule with no search
+    /// term to go on.
+    /// </summary>
+    [JsonIgnore]
+    [IgnoreMenu]
+    public bool HasMetadataPaths => MetadataPathList.Length > 0 || ExcludedMetadataPathList.Length > 0;
+
+    private static string[] SplitOnCommas(TextNode text, ref string source, ref string[] list)
+    {
+        var value = text?.Value ?? "";
+
+        if (value != source)
+        {
+            source = value;
+            list = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
+
+        return list;
     }
 
     /// <summary>
-    /// Whether an entity with this metadata path passes Metadata paths, honouring Exclude metadata paths.
+    /// Whether an entity with this metadata path passes the rule's paths: on one of Metadata paths, or Metadata paths
+    /// is blank, and on none of Excluded metadata paths.
     /// </summary>
     public bool MatchesMetadataPath(string path)
     {
-        var parts = MetadataPathList;
-        if (parts.Length == 0)
-            return true;
+        var included = MetadataPathList;
 
-        var hit = false;
-
-        if (!string.IsNullOrEmpty(path))
-        {
-            foreach (var part in parts)
-            {
-                if (path.Contains(part, StringComparison.OrdinalIgnoreCase))
-                {
-                    hit = true;
-                    break;
-                }
-            }
-        }
-
-        return ExcludeMetadataPaths ? !hit : hit;
+        return (included.Length == 0 || ContainsAny(path, included)) &&
+               !ContainsAny(path, ExcludedMetadataPathList);
     }
 
-    /// <summary>Metadata paths as the rule's entry shows them, with "not " in front when they are excluded.</summary>
-    public string DescribeMetadataPaths() =>
-        !HasMetadataPaths ? "any monster" : (ExcludeMetadataPaths ? "not " : "") + MetadataPaths.Value;
+    private static bool ContainsAny(string path, string[] parts)
+    {
+        if (string.IsNullOrEmpty(path))
+            return false;
+
+        foreach (var part in parts)
+        {
+            if (path.Contains(part, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The rule's paths as its entry shows them: Metadata paths, then "not " and Excluded metadata paths, e.g.
+    /// "Metadata/Monsters but not BeehiveBehemoth".
+    /// </summary>
+    public string DescribeMetadataPaths()
+    {
+        var included = MetadataPathList.Length > 0 ? MetadataPaths.Value : null;
+        var excluded = ExcludedMetadataPathList.Length > 0 ? $"not {ExcludedMetadataPaths.Value}" : null;
+
+        return (included, excluded) switch
+        {
+            (null, null) => "any monster",
+            (_, null) => included,
+            (null, _) => excluded,
+            _ => $"{included} but {excluded}",
+        };
+    }
 
     private string _termSource;
     private string[] _terms = [];
